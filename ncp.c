@@ -7,7 +7,7 @@ int gethostname(char*,size_t);
 
 void PromptForHostName( char *my_name, char *host_name, size_t max_len ); 
 
-int main()
+int main(int argc, char **argv)
 {
     struct sockaddr_in    name;
     struct sockaddr_in    send_addr;
@@ -27,6 +27,27 @@ int main()
     char                  mess_buf[MAX_MESS_LEN];
     char                  input_buf[80];
     struct timeval        timeout;
+    int loss_rate;
+    /* Pointer to source file, which we read */
+    FILE *fr; 
+
+    // Need three arguements: loss_rate_percent, source_file_name, and dest_file_name@computer_name 
+    if(argc != 4) {
+        printf("Usage: ncp <loss_rate_percent> <source_file_name> <dest_file_name>@<comp_name>\n");
+        exit(0);
+    }
+
+    // Set loss rate
+    loss_rate = atoi(argv[1]);
+    sendto_dbg_init(loss_rate);
+
+    /* Open the source file for reading */
+    if((fr = fopen(argv[2], "r")) == NULL) {
+      perror("fopen");
+      exit(0);
+    }
+    printf("Opened %s for reading...\n", argv[1]);
+
 
     /* AF_INET: interested in doing it on the internet. SOCK_DGRAM: 
      * socket of datagram?*/
@@ -70,7 +91,7 @@ int main()
     send_addr.sin_addr.s_addr = host_num; 
     send_addr.sin_port = htons(PORT);
 
-    // TODO: use loss rate param to set sendto_dbg
+
 
     FD_ZERO( &mask );
     FD_ZERO( &dummy_mask );
@@ -81,7 +102,7 @@ int main()
         
         // TODO: set number of usec (microsec) appropriately 
         timeout.tv_sec = 0;
-	timeout.tv_usec = 0;
+	    timeout.tv_usec = 0;
         num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
         if (num > 0) {
             if ( FD_ISSET( sr, &temp_mask) ) {
