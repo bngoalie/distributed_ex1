@@ -15,7 +15,7 @@ int main(int argc, char **argv)
     socklen_t             from_len;
     struct hostent        h_ent;
     struct hostent        *p_h_ent;
-    char                  host_name[NAME_LENGTH] = {'\0'};
+    char                  *host_name;
     char                  my_name[NAME_LENGTH] = {'\0'};
     int                   host_num;
     int                   from_ip;
@@ -29,28 +29,56 @@ int main(int argc, char **argv)
     struct timeval        timeout;
     int loss_rate;
     /* Pointer to source file, which we read */
-    FILE *fr; 
+    FILE *fr;
+    char *dest_file_name;
+    char *source_file_name; 
+    int dest_file_str_len, host_str_len;
+    Packet packet;
+    int packet_size;
 
-    // Need three arguements: loss_rate_percent, source_file_name, and dest_file_name@computer_name 
+    /* Need three arguements: loss_rate_percent, source_file_name, and 
+       dest_file_name@comp_name */
     if(argc != 4) {
-        printf("Usage: ncp <loss_rate_percent> <source_file_name> <dest_file_name>@<comp_name>\n");
+        printf("Usage: ncp <loss_rate_percent> <source_file_name> \
+<dest_file_name>@<comp_name>\n");
         exit(0);
     }
 
-    // Set loss rate
+    /* Set loss rate */
     loss_rate = atoi(argv[1]);
     sendto_dbg_init(loss_rate);
 
     /* Open the source file for reading */
-    if((fr = fopen(argv[2], "r")) == NULL) {
+    source_file_name = argv[2];
+    if((fr = fopen(source_file_name, "r")) == NULL) {
       perror("fopen");
       exit(0);
     }
-    printf("Opened %s for reading...\n", argv[1]);
+    printf("Opened %s for reading...\n", argv[2]);
 
+    /* Get dest_file_name and set length of the string*/
+    if (!(dest_file_name = strtok(argv[3], "@"))) {
+        perror("incorrect form for <dest_file_name>@<comp_name>");
+        exit(0);
+    }
+    dest_file_str_len = strlen(dest_file_name);
+
+    /* Get host_name to which to send the file. Set and check str length */
+    host_name = strtok(NULL, " ");   
+    host_str_len = strlen(host_name);
+    if (host_str_len > NAME_LENGTH) {
+        perror("Too long host name");
+        exit(0);
+    }
+
+    gethostname(my_name, NAME_LENGTH);
+    printf("My host name is %s.\n", my_name);
+
+    printf( "Sending file %s from %s to %s on host %s.\n", source_file_name, 
+            my_name, dest_file_name, host_name );
 
     /* AF_INET: interested in doing it on the internet. SOCK_DGRAM: 
-     * socket of datagram?*/
+       socket of datagram? */
     sr = socket(AF_INET, SOCK_DGRAM, 0);  /* socket for receiving (udp) */
     if (sr<0) {
         perror("Ucast: socket");
@@ -63,19 +91,19 @@ int main(int argc, char **argv)
     /* port to use */ 
     name.sin_port = htons(PORT);
 
-/* socket on which to receive*/
+    /* socket on which to receive*/
     if ( bind( sr, (struct sockaddr *)&name, sizeof(name) ) < 0 ) {
         perror("Ucast: bind");
         exit(1);
     }
- /*Socket on which to send*/
+    /* Socket on which to send */
     ss = socket(AF_INET, SOCK_DGRAM, 0); /* socket for sending (udp) */
     if (ss<0) {
         perror("Ucast: socket");
         exit(1);
     }
-    /*Using Domain Name Service. Get IP address that is 4 bytes long.*/
-    PromptForHostName(my_name,host_name,NAME_LENGTH);
+    /* Using Domain Name Service. Get IP address that is 4 bytes long. */
+    /* PromptForHostName(my_name,host_name,NAME_LENGTH);*/
     
     p_h_ent = gethostbyname(host_name);
     if ( p_h_ent == NULL ) {
@@ -87,10 +115,15 @@ int main(int argc, char **argv)
     memcpy( &host_num, h_ent.h_addr_list[0], sizeof(host_num) );
 
     send_addr.sin_family = AF_INET;
-/*IP address of host to send to.*/
+    /* IP address of host to send to. */
     send_addr.sin_addr.s_addr = host_num; 
     send_addr.sin_port = htons(PORT);
 
+    /* TODO: Send transfer request packet */
+    packet.packet_type = (char) 0;
+    packet.payload = dest_file_name;
+    /* We have to include the null-terminator character. */ 
+    packet_size = sizeof(packet.packet_type) + dest_file_str_len + 1;
 
 
     FD_ZERO( &mask );
@@ -100,10 +133,11 @@ int main(int argc, char **argv)
     {
         temp_mask = mask;
         
-        // TODO: set number of usec (microsec) appropriately 
+        /* TODO: set number of usec (microsec) appropriately */
         timeout.tv_sec = 0;
 	    timeout.tv_usec = 0;
-        num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
+        num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, 
+                      &timeout);
         if (num > 0) {
             if ( FD_ISSET( sr, &temp_mask) ) {
                 from_len = sizeof(from_addr);
@@ -122,43 +156,22 @@ int main(int argc, char **argv)
 								mess_buf );
 
             } else {
-                // TODO: what happened?
+                /* TODO: what happened? */
             }
 	} else {
-                // Select timed out. Send a packet.
-                // TODO: If haven't reached end of window, and nack queue is empty or nothing in nack queue should be sent again 
-                // TODO: read chunk from file (see filecopy.c) 
+                /* Select timed out. Send a packet.
+                   TODO: If haven't reached end of window, and nack queue is 
+                   empty or nothing in nack queue should be sent again 
+                   TODO: read chunk from file (see filecopy.c) */
                 bytes = read( 0, input_buf, sizeof(input_buf) );
                 input_buf[bytes] = 0;
                 printf( "There is an input: %s\n", input_buf );
-                // TODO: change to use sendto_dbg
+                /* TODO: change to use sendto_dbg */
                 sendto( ss, input_buf, strlen(input_buf), 0, 
                     (struct sockaddr *)&send_addr, sizeof(send_addr) );
         }
     }
 
     return 0;
-
-}
-
-void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
-
-    char *c;
-
-    gethostname(my_name, max_len );
-    printf("My host name is %s.\n", my_name);
-
-    printf( "\nEnter host to send to:\n" );
-    if ( fgets(host_name,max_len,stdin) == NULL ) {
-        perror("Ucast: read_name");
-        exit(1);
-    }
-    
-    c = strchr(host_name,'\n');
-    if ( c ) *c = '\0';
-    c = strchr(host_name,'\r');
-    if ( c ) *c = '\0';
-
-    printf( "Sending from %s to %s.\n", my_name, host_name );
 
 }

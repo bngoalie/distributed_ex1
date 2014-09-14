@@ -18,10 +18,12 @@
 
 #define WINDOW_SIZE 256
 
-// Struct for send packet
+#define MAX_PACKET_SIZE 1440
+
+/* Struct for send packet */
 typedef struct dummy_packet {
-    // Types for ncp packets: request transfer, regular data, final data
-    // Types for rcv packets: ready to transfer, ack & nacks
+    /* Types for ncp packets: request transfer, regular data, final data
+       Types for rcv packets: ready to transfer, ack & nacks */
     char packet_type;
     /* ncp payloads: for transfer request, just the name of the file. 
      *               for all other types: bytes for the file
@@ -29,7 +31,7 @@ typedef struct dummy_packet {
      *               for acks & nacks packets, the first byte will be the cumulative ack, and the remaining bytes will be nacks
      */
     char *payload;    
-} packet;
+} Packet;
 
 
 
