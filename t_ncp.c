@@ -4,25 +4,25 @@
  * Copies a file from the current machine to a target machine.
  * Arguments: t_ncp <file_src> <file_dst>@<target>
  */
-
+	
 int main(int argc, char *argv[])
 {
 	struct 	sockaddr_in 	host;
 	struct 	hostent		h_ent, *p_h_ent;
 	char	host_name[80];
 	
-	FILE	*file_src;	// File source
-	char	*file_dst;	// File destination
-	char	*target;	// Target machine
+	FILE	*file_src;	/* File source */
+	char	*file_dst;	/* File destination */
+	char	*target;	/* Target machine */
 	
-	int	s;		// Socket
+	int	s;		/* Socket */
 	int	ret;
 	int	nread;
 	int	mess_len;
 	char	mess_buf[MAX_MESS_LEN];
 	char	*neto_mess_ptr = &mess_buf[sizeof(mess_len)];
 
-	// Open file source and get destination from arguments:
+	/* Open file source and get destination from arguments: */
 	if ((file_src = fopen(argv[1], "r")) == NULL)
 	{
 		perror("fopen");
@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
 	file_dst = strtok(argv[2], "@");
 	target = strtok(NULL, "\0");
 
-	// Open TCP socket:	
+	/* Open TCP socket: */
 	s = socket(AF_INET, SOCK_STREAM, 0);
 	if (s<0) 
 	{
@@ -40,10 +40,10 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	host.sin_family = AF_INET; 	// Set internet address family
-	host.sin_port	= htons(PORT); 	// Set port
+	host.sin_family = AF_INET; 	/* Set internet address family */
+	host.sin_port	= htons(PORT); 	/* Set port */
 
-	// Get target machine info from name:
+	/* Get target machine info from name: */
 	p_h_ent = gethostbyname(target);
 	if (p_h_ent == NULL)
 	{
@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
 	memcpy(&h_ent, p_h_ent, sizeof(h_ent));
 	memcpy(&host.sin_addr, h_ent.h_addr_list[0], sizeof(host.sin_addr));
 
-	// Open TCP connection:
+	/* Open TCP connection: */
 	ret = connect(s, (struct sockaddr *)&host, sizeof(host));
 	if (ret < 0)
 	{
@@ -62,12 +62,12 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	// Send file:
+	/* Send file: */
 	for (;;)
 	{
 		nread = fread(mess_buf, 1, MAX_MESS_LEN, file_src);
 		if (nread > 0)
-			// SEND PACKET
+			/* SEND PACKET */
 			printf("SEND PACKET HERE\n");
 			ret = send(s, mess_buf, nread, 0);
 			if (ret != nread)
@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	// Close file:
+	/* Close file: */
 	fclose(file_src);
 	return 0;
 }

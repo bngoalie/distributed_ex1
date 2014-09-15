@@ -18,7 +18,7 @@
 
 #define WINDOW_SIZE 256
 
-#define MAX_PACKET_SIZE 1440
+#define MAX_PACKET_SIZE 1400
 
 /* Struct for generic packet */
 typedef struct dummy_packet {

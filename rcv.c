@@ -1,7 +1,9 @@
 #include "net_include.h"
 
+/* Constants */
 #define NAME_LENGTH 80
 
+/* Function prototypes: */
 int gethostname(char*,size_t);
 
 void PromptForHostName( char *my_name, char *host_name, size_t max_len ); 
