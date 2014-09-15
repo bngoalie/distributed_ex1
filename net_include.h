@@ -20,18 +20,33 @@
 
 #define MAX_PACKET_SIZE 1440
 
-/* Struct for send packet */
+/* Struct for generic packet */
 typedef struct dummy_packet {
     /* Types for ncp packets: request transfer, regular data, final data
        Types for rcv packets: ready to transfer, ack & nacks */
-    char packet_type;
+    char type;
     /* ncp payloads: for transfer request, just the name of the file. 
      *               for all other types: bytes for the file
      * rcv payloads: for ready to transfer packets, there is no need for a payload.
      *               for acks & nacks packets, the first byte will be the cumulative ack, and the remaining bytes will be nacks
      */
-    char *payload;    
+    char payload[MAX_PACKET_SIZE- sizeof(char)];    
 } Packet;
+
+/* Struct for send packet */
+typedef struct dummy_packet {
+    /* Types for ncp packets: request transfer, regular data, final data
+       Types for rcv packets: ready to transfer, ack & nacks */
+    char type;
+    /* ID for sending packet is a number from 0-255 inclusive */
+    char id;
+    /* ncp payloads: for transfer request, just the name of the file. 
+     *               for all other types: bytes for the file
+     * rcv payloads: for ready to transfer packets, there is no need for a payload.
+     *               for acks & nacks packets, the first byte will be the cumulative ack, and the remaining bytes will be nacks
+     */
+    char payload[MAX_PACKET_SIZE- 2*sizeof(char)];    
+} DataPacket;
 
 
 

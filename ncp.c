@@ -33,8 +33,9 @@ int main(int argc, char **argv)
     char *dest_file_name;
     char *source_file_name; 
     int dest_file_str_len, host_str_len;
-    Packet packet;
+    Packet *packet;
     int packet_size;
+    char packet_type;
 
     /* Need three arguements: loss_rate_percent, source_file_name, and 
        dest_file_name@comp_name */
@@ -119,12 +120,25 @@ int main(int argc, char **argv)
     send_addr.sin_addr.s_addr = host_num; 
     send_addr.sin_port = htons(PORT);
 
-    /* TODO: Send transfer request packet */
-    packet.packet_type = (char) 0;
-    packet.payload = dest_file_name;
-    /* We have to include the null-terminator character. */ 
-    packet_size = sizeof(packet.packet_type) + dest_file_str_len + 1;
+    /* Send transfer request packet */
+    packet_size = sizeof(char) + dest_file_str_len;
+    if (packet_size > sizeof(Packet)) {
+        perror("Packet size for tranfer request packet to large");
+        exit(0);
+    }
+    packet = malloc(sizeof(Packet));
+    if (!packet) {
+        printf("Malloc failed.\n");
+        exit(0);
+    }
+    /* TODO: If use enums, then have to consider size in Packet */
+    packet->type = 0;
+    strcpy(packet->payload, dest_file_name);
 
+    /* Size of packet is only as big as it needs to be (size of ID + size of
+       payload/name of destination file name) */
+    sendto_dbg(ss, (char *)packet, packet_size, 0,
+		   (struct sockaddr *)&send_addr, sizeof(send_addr));
 
     FD_ZERO( &mask );
     FD_ZERO( &dummy_mask );

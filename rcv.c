@@ -26,6 +26,9 @@ int main()
     char                  mess_buf[MAX_MESS_LEN];
     char                  input_buf[80];
     struct timeval        timeout;
+    Packet                *rcvd_packet;
+    DataPacket            *data_packet;
+    
 
     /* AF_INET: interested in doing it on the internet. SOCK_DGRAM: 
      * socket of datagram?*/
@@ -73,6 +76,8 @@ int main()
     FD_ZERO( &dummy_mask );
     FD_SET( sr, &mask );
     FD_SET( (long)0, &mask ); /* stdin */
+    /* TODO: For receiving tranfer request packets, the payload does not include
+       the null-terminator character. Must be added. */
     for(;;)
     {
         temp_mask = mask;
@@ -86,7 +91,14 @@ int main()
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
-                mess_buf[bytes] = 0;
+                /* TODO: extract logic for handling received packet */
+                rcvd_packet = (rcvd_packet *)bytes;
+                if (rcvd_packet->type == 0) {
+                    /* TODO: Handle tranfer packet */                
+                } else {
+                    /* TODO: use function for handling data packet. */
+                    data_packet = (DataPacket *)recvd_packet;
+                }
                 from_ip = from_addr.sin_addr.s_addr;
 
                 printf( "Received from (%d.%d.%d.%d): %s\n", 
