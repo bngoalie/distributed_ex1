@@ -6,6 +6,8 @@ int gethostname(char*,size_t);
 
 void PromptForHostName( char *my_name, char *host_name, size_t max_len ); 
 
+void handleTransferPacket(Packet *packet, FILE *fw);
+
 int main()
 {
     struct sockaddr_in    name;
@@ -23,11 +25,11 @@ int main()
     fd_set                dummy_mask,temp_mask;
     int                   bytes;
     int                   num;
-    char                  mess_buf[MAX_MESS_LEN];
+    char                  mess_buf[MAX_PACKET_SIZE];
     char                  input_buf[80];
     struct timeval        timeout;
     Packet                *rcvd_packet;
-    DataPacket            *data_packet;
+    FILE *fw = NULL; /* Pointer to dest file, which we write  */
     
 
     /* AF_INET: interested in doing it on the internet. SOCK_DGRAM: 
@@ -92,12 +94,12 @@ int main()
                           (struct sockaddr *)&from_addr, 
                           &from_len );
                 /* TODO: extract logic for handling received packet */
-                rcvd_packet = (rcvd_packet *)bytes;
-                if (rcvd_packet->type == 0) {
-                    /* TODO: Handle tranfer packet */                
+                rcvd_packet = (Packet *)mess_buf;
+                if (rcvd_packet->type == (char) 0) {
+                    /* TODO: Handle tranfer packet */
+                    handleTransferPacket(rcvd_packet, fw);                
                 } else {
                     /* TODO: use function for handling data packet. */
-                    data_packet = (DataPacket *)recvd_packet;
                 }
                 from_ip = from_addr.sin_addr.s_addr;
 
@@ -145,4 +147,11 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
 
     printf( "Sending from %s to %s.\n", my_name, host_name );
 
+}
+
+void handleTransferPacket(Packet *packet, FILE *fw) {
+    if((fw = fopen(packet->payload, "w")) == NULL) {
+        perror("fopen");
+        exit(0);
+    }
 }

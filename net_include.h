@@ -34,7 +34,7 @@ typedef struct dummy_packet {
 } Packet;
 
 /* Struct for send packet */
-typedef struct dummy_packet {
+typedef struct dummy_packet_2 {
     /* Types for ncp packets: request transfer, regular data, final data
        Types for rcv packets: ready to transfer, ack & nacks */
     char type;

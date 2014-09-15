@@ -35,7 +35,6 @@ int main(int argc, char **argv)
     int dest_file_str_len, host_str_len;
     Packet *packet;
     int packet_size;
-    char packet_type;
 
     /* Need three arguements: loss_rate_percent, source_file_name, and 
        dest_file_name@comp_name */
@@ -121,7 +120,8 @@ int main(int argc, char **argv)
     send_addr.sin_port = htons(PORT);
 
     /* Send transfer request packet */
-    packet_size = sizeof(char) + dest_file_str_len;
+    /* Add 1 for null-terminator. */
+    packet_size = sizeof(char) + dest_file_str_len + 1;
     if (packet_size > sizeof(Packet)) {
         perror("Packet size for tranfer request packet to large");
         exit(0);
@@ -132,7 +132,7 @@ int main(int argc, char **argv)
         exit(0);
     }
     /* TODO: If use enums, then have to consider size in Packet */
-    packet->type = 0;
+    packet->type = (char) 0;
     strcpy(packet->payload, dest_file_name);
 
     /* Size of packet is only as big as it needs to be (size of ID + size of
