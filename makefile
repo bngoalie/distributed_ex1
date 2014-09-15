@@ -21,6 +21,7 @@ clean:
 	rm ncp
 	rm rcv
 	rm t_ncp
+	rm t_rcv
 
 %.o:    %.c
 	$(CC) $(CFLAGS) $*.c
