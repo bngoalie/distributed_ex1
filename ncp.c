@@ -28,8 +28,7 @@ int main(int argc, char **argv)
     char                  input_buf[80];
     struct timeval        timeout;
     int loss_rate;
-    /* Pointer to source file, which we read */
-    FILE *fr;
+    FILE *fr; /* Pointer to source file, which we read */
     char *dest_file_name;
     char *source_file_name; 
     int dest_file_str_len, host_str_len;
@@ -40,7 +39,7 @@ int main(int argc, char **argv)
        dest_file_name@comp_name */
     if(argc != 4) {
         printf("Usage: ncp <loss_rate_percent> <source_file_name> \
-<dest_file_name>@<comp_name>\n");
+            <dest_file_name>@<comp_name>\n");
         exit(0);
     }
 
@@ -74,7 +73,7 @@ int main(int argc, char **argv)
     gethostname(my_name, NAME_LENGTH);
     printf("My host name is %s.\n", my_name);
 
-    printf( "Sending file %s from %s to %s on host %s.\n", source_file_name, 
+    printf("Attempting to send file %s from %s to %s on host %s.\n", source_file_name, 
             my_name, dest_file_name, host_name );
 
     /* AF_INET: interested in doing it on the internet. SOCK_DGRAM: 

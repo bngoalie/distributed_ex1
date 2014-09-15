@@ -1,14 +1,21 @@
+/* Includes */
 #include "net_include.h"
 
 /* Constants */
 #define NAME_LENGTH 80
 
-/* Function prototypes: */
+/* Function prototypes */
 int gethostname(char*,size_t);
-
 void PromptForHostName( char *my_name, char *host_name, size_t max_len ); 
-
 void handleTransferPacket(Packet *packet, FILE *fw);
+
+/* Structs */
+typedef struct dummy_node 
+{
+    int         sender_ip;
+    char        *name;
+    struct dummy_node *next;
+} node;
 
 int main()
 {
@@ -31,11 +38,9 @@ int main()
     char                  input_buf[80];
     struct timeval        timeout;
     Packet                *rcvd_packet;
-    FILE *fw = NULL; /* Pointer to dest file, which we write  */
+    struct node *root = NULL;  
+    FILE *fw = NULL; /* Pointer to dest file, to which we write  */
     
-
-    /* AF_INET: interested in doing it on the internet. SOCK_DGRAM: 
-     * socket of datagram?*/
     sr = socket(AF_INET, SOCK_DGRAM, 0);  /* socket for receiving (udp) */
     if (sr<0) {
         perror("Ucast: socket");
@@ -48,12 +53,12 @@ int main()
     /* port to use */ 
     name.sin_port = htons(PORT);
 
-/* socket on which to receive*/
+    /* socket on which to receive*/
     if ( bind( sr, (struct sockaddr *)&name, sizeof(name) ) < 0 ) {
         perror("Ucast: bind");
         exit(1);
     }
- /*Socket on which to send*/
+    /*Socket on which to send*/
     ss = socket(AF_INET, SOCK_DGRAM, 0); /* socket for sending (udp) */
     if (ss<0) {
         perror("Ucast: socket");
@@ -70,9 +75,9 @@ int main()
 
     memcpy( &h_ent, p_h_ent, sizeof(h_ent));
     memcpy( &host_num, h_ent.h_addr_list[0], sizeof(host_num) );
-
+    
     send_addr.sin_family = AF_INET;
-/*IP address of host to send to.*/
+    /*IP address of host to send to.*/
     send_addr.sin_addr.s_addr = host_num; 
     send_addr.sin_port = htons(PORT);
 
@@ -106,11 +111,11 @@ int main()
                 from_ip = from_addr.sin_addr.s_addr;
 
                 printf( "Received from (%d.%d.%d.%d): %s\n", 
-								(htonl(from_ip) & 0xff000000)>>24,
-								(htonl(from_ip) & 0x00ff0000)>>16,
-								(htonl(from_ip) & 0x0000ff00)>>8,
-								(htonl(from_ip) & 0x000000ff),
-								mess_buf );
+						(htonl(from_ip) & 0xff000000)>>24,
+						(htonl(from_ip) & 0x00ff0000)>>16,
+						(htonl(from_ip) & 0x0000ff00)>>8,
+						(htonl(from_ip) & 0x000000ff),
+						mess_buf );
 
             }else if( FD_ISSET(0, &temp_mask) ) {
                 bytes = read( 0, input_buf, sizeof(input_buf) );
