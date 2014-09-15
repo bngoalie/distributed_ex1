@@ -7,8 +7,8 @@ all: ncp rcv t_ncp t_rcv
 ncp: ncp.o sendto_dbg.o
 	    $(CC) -o ncp ncp.o sendto_dbg.o
 
-rcv: rcv.o
-	    $(CC) -o rcv rcv.o
+rcv: rcv.o sendto_dbg.o
+	    $(CC) -o rcv rcv.o sendto_dbg.o
 
 t_ncp: t_ncp.o
 	    $(CC) -o t_ncp t_ncp.o

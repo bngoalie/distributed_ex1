@@ -8,10 +8,10 @@
 /* Function prototypes */
 int gethostname(char*,size_t);
 void PromptForHostName( char *my_name, char *host_name, size_t max_len ); 
-void handleTransferPacket(Packet *packet, FILE *fw);
-boolean isInQueue(int ip);
+void handleTransferPacket(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr);
+char isInQueue(int ip);
 void addToQueue(Packet *packet, int ip);
-void initiateTransfer(Packet *packet, FILE *fw, int ip);
+void initiateTransfer(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr);
 
 
 /* Structs */
@@ -113,8 +113,7 @@ int main()
                 rcvd_packet = (Packet *)mess_buf;
                 if (rcvd_packet->type == (char) 0) {
                     /* TODO: Handle tranfer packet */
-                    handleTransferPacket(rcvd_packet, fw, from_ip);             
-   
+                    handleTransferPacket(rcvd_packet, fw, from_ip, ss, &send_addr);             
                 } else {
                     /* TODO: use function for handling data packet. */
                 }
@@ -165,7 +164,7 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
 
 }
 
-void handleTransferPacket(Packet *packet, FILE *fw, int ip) {
+void handleTransferPacket(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr) {
     /* If the ip is not in the queue, we want to add it to the tranfer queue */
     if (!isInQueue(ip)) {
         addToQueue(packet, ip);
@@ -174,6 +173,7 @@ tranfer. */
         if (transfer_queue_head->sender_ip == ip) {
             /* handle tranfer initiation: ready for tranfer packet, open file 
 writer */
+            initiateTransfer(packet, fw, ip, ss, send_addr);
             /* Only open file for writing if not already opened. */
             if(fw != NULL && (fw = fopen(packet->payload, "w")) == NULL) {
                 perror("fopen");
@@ -183,15 +183,15 @@ writer */
     }
 }
 
-boolean isInQueue(int ip) {
+char isInQueue(int ip) {
     Node *itr = transfer_queue_head;
     while (itr != NULL) {
-        if (itr->sender_ip = ip) {
-            return true;
+        if (itr->sender_ip == ip) {
+            return 1;
         }
         itr =itr->next;
     }
-    return false;
+    return 0;
 }
 
 void addToQueue(Packet *packet, int ip) {
@@ -211,12 +211,10 @@ void addToQueue(Packet *packet, int ip) {
         transfer_queue_tail = newNode;
     }
 }
- /* So this has got problems with send_addr. Even though I'm trying to extract logic, we can't use the from_addr that we 
- * received from rcvdfrom() directly as our send_addr. We still want to pass the send_addr, but not the way that is currently done above.
- * Instead of passing from_addr above where this fxn is called, pass send_addr that is used in ucast.c. 
- * In this fxn, we will set send_addr->sin_addr->a_addr = ip. I believe that is the correct names for the fields, but you can double check in ucast.c*/
+/* fixed usage. 
+*/
 void initiateTransfer(Packet *packet, FILE *fw, int ip, int ss, 
-                      sockaddr_in *send_addr) {
+                      struct sockaddr_in *send_addr) {
     Packet *responsePacket = malloc(sizeof(packet));
     if (!responsePacket) {
         printf("Malloc failed for ready-for-tranfer response packet.\n");
