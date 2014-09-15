@@ -13,7 +13,7 @@ char isInQueue(int ip);
 void addToQueue(Packet *packet, int ip);
 void initiateTransfer(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr);
 
-
+    
 /* Structs */
 typedef struct dummy_node 
 {
@@ -72,23 +72,11 @@ int main()
         perror("Ucast: socket");
         exit(1);
     }
-    /*Using Domain Name Service. Get IP address that is 4 bytes long.*/
-    PromptForHostName(my_name,host_name,NAME_LENGTH);
-    
-    p_h_ent = gethostbyname(host_name);
-    if ( p_h_ent == NULL ) {
-        printf("Ucast: gethostbyname error.\n");
-        exit(1);
-    }
 
-    memcpy( &h_ent, p_h_ent, sizeof(h_ent));
-    memcpy( &host_num, h_ent.h_addr_list[0], sizeof(host_num) );
-    
+    /*Set address family and port*/
     send_addr.sin_family = AF_INET;
-    /*IP address of host to send to.*/
-    send_addr.sin_addr.s_addr = host_num; 
     send_addr.sin_port = htons(PORT);
-
+    
     FD_ZERO( &mask );
     FD_ZERO( &dummy_mask );
     FD_SET( sr, &mask );
@@ -220,6 +208,9 @@ void initiateTransfer(Packet *packet, FILE *fw, int ip, int ss,
         printf("Malloc failed for ready-for-tranfer response packet.\n");
         exit(0);
     }
+    /*IP address of host to send to.*/
+    send_addr->sin_addr.s_addr = host_num; 
+    
     responsePacket->type = (char) 0;
     sendto_dbg(ss, (char *)packet, sizeof(char), 0,
                (struct sockaddr *)send_addr, sizeof(*send_addr));
