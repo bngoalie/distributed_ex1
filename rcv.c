@@ -1,5 +1,6 @@
 /* Includes */
 #include "net_include.h"
+#include "sendto_dbg.h"
 
 /* Constants */
 #define NAME_LENGTH 80
@@ -8,6 +9,10 @@
 int gethostname(char*,size_t);
 void PromptForHostName( char *my_name, char *host_name, size_t max_len ); 
 void handleTransferPacket(Packet *packet, FILE *fw);
+boolean isInQueue(int ip);
+void addToQueue(Packet *packet, int ip);
+void initiateTransfer(Packet *packet, FILE *fw, int ip);
+
 
 /* Structs */
 typedef struct dummy_node 
@@ -15,8 +20,11 @@ typedef struct dummy_node
     int         sender_ip;
     char        *name;
     struct dummy_node *next;
-} node;
+} Node;
 
+Node *transfer_queue_head = NULL;
+Node *transfer_queue_tail = NULL;
+    
 int main()
 {
     struct sockaddr_in    name;
@@ -38,7 +46,7 @@ int main()
     char                  input_buf[80];
     struct timeval        timeout;
     Packet                *rcvd_packet;
-    struct node *root = NULL;  
+
     FILE *fw = NULL; /* Pointer to dest file, to which we write  */
     
     sr = socket(AF_INET, SOCK_DGRAM, 0);  /* socket for receiving (udp) */
@@ -100,15 +108,16 @@ int main()
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
+                from_ip = from_addr.sin_addr.s_addr;
                 /* TODO: extract logic for handling received packet */
                 rcvd_packet = (Packet *)mess_buf;
                 if (rcvd_packet->type == (char) 0) {
                     /* TODO: Handle tranfer packet */
-                    handleTransferPacket(rcvd_packet, fw);                
+                    handleTransferPacket(rcvd_packet, fw, from_ip);             
+   
                 } else {
                     /* TODO: use function for handling data packet. */
                 }
-                from_ip = from_addr.sin_addr.s_addr;
 
                 printf( "Received from (%d.%d.%d.%d): %s\n", 
 						(htonl(from_ip) & 0xff000000)>>24,
@@ -156,8 +165,68 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
 
 }
 
-void handleTransferPacket(Packet *packet, FILE *fw) {
-    if((fw = fopen(packet->payload, "w")) == NULL) {
+void handleTransferPacket(Packet *packet, FILE *fw, int ip) {
+    /* If the ip is not in the queue, we want to add it to the tranfer queue */
+    if (!isInQueue(ip)) {
+        addToQueue(packet, ip);
+        /* If the current sender is first in the queue, want to initiate 
+tranfer. */
+        if (transfer_queue_head->sender_ip == ip) {
+            /* handle tranfer initiation: ready for tranfer packet, open file 
+writer */
+            /* Only open file for writing if not already opened. */
+            if(fw != NULL && (fw = fopen(packet->payload, "w")) == NULL) {
+                perror("fopen");
+                exit(0);
+            }
+        }
+    }
+}
+
+boolean isInQueue(int ip) {
+    Node *itr = transfer_queue_head;
+    while (itr != NULL) {
+        if (itr->sender_ip = ip) {
+            return true;
+        }
+        itr =itr->next;
+    }
+    return false;
+}
+
+void addToQueue(Packet *packet, int ip) {
+    Node *newNode = malloc(sizeof(Node)); 
+    if (!newNode) {
+        printf("Malloc failed for new tranfer queue node.\n");
+        exit(0);
+    }
+    newNode->name = packet->payload;
+    newNode->next = NULL;
+    newNode->sender_ip = ip;
+    if (transfer_queue_head == NULL) {
+        transfer_queue_head = newNode;
+        transfer_queue_tail = newNode;
+    } else {
+        transfer_queue_tail->next = newNode;
+        transfer_queue_tail = newNode;
+    }
+}
+ /* So this has got problems with send_addr. Even though I'm trying to extract logic, we can't use the from_addr that we 
+ * received from rcvdfrom() directly as our send_addr. We still want to pass the send_addr, but not the way that is currently done above.
+ * Instead of passing from_addr above where this fxn is called, pass send_addr that is used in ucast.c. 
+ * In this fxn, we will set send_addr->sin_addr->a_addr = ip. I believe that is the correct names for the fields, but you can double check in ucast.c*/
+void initiateTransfer(Packet *packet, FILE *fw, int ip, int ss, 
+                      sockaddr_in *send_addr) {
+    Packet *responsePacket = malloc(sizeof(packet));
+    if (!responsePacket) {
+        printf("Malloc failed for ready-for-tranfer response packet.\n");
+        exit(0);
+    }
+    responsePacket->type = (char) 0;
+    sendto_dbg(ss, (char *)packet, sizeof(char), 0,
+               (struct sockaddr *)send_addr, sizeof(*send_addr));
+    /* Only open file for writing if not already opened. */
+    if(fw != NULL && (fw = fopen(packet->payload, "w")) == NULL) {
         perror("fopen");
         exit(0);
     }
