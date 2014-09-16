@@ -164,14 +164,13 @@ int main(int argc, char **argv)
         temp_mask = mask;
         
         /* Multiplex select */
-        num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, 
-                      &timeout);
+        num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
         if (num > 0)    /* Select has been triggered */ 
         {
             if ( FD_ISSET( sr, &temp_mask) ) /* Receiving socket has packet */
             {
-                from_len = sizeof(from_addr);
                 /* Get data from ethernet interface */
+                from_len = sizeof(from_addr);
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
@@ -205,7 +204,6 @@ int main(int argc, char **argv)
         else 
         {
             /* Select has timed out. Send a packet. */
-
             if (begun == 0) /* Transfer has not yet begun. Send transfer packet */
             {
                 sendto_dbg(ss, (char *)packet, packet_size, 0,
@@ -215,20 +213,28 @@ int main(int argc, char **argv)
             else /* Transfer has already begun. Send data packet */
             {
                 /* TODO: If haven't reached end of window, and nack queue is 
-                empty or nothing in nack queue should be sent again 
+                empty or nothing in nack queue should be sent again */ 
                 
-                TODO: read chunk from file (see filecopy.c) */
-                //bytes = read( 0, input_buf, sizeof(input_buf) );
-                bytes = fread (input_buf, 1, BUF_SIZE, fr);
+                /* Read file into char buffer */
+                bytes = fread (input_buf, 1, PAYLOAD_SIZE, fr);
                 input_buf[bytes] = 0;
-                printf( "There is an input: %s\n", input_buf );
+                packet = malloc(sizeof(Packet));
+                
+                if (bytes < PAYLOAD_SIZE)
+                {
+                     /* TODO: If size is less than max, cast to end packet type */
+                }
+                else
+                {
+                    /* TODO: If full-size packet, cast to data packet type */
+                }
+                
                 sendto_dbg( ss, input_buf, strlen(input_buf), 0, 
                 (struct sockaddr *)&send_addr, sizeof(send_addr) );
-        
+
                 /* TODO: Store packet in array for future use */
-                /* Increment ID */ 
+                /* TODO: Increment ID */ 
             }
-            
         }
     }
     return 0;

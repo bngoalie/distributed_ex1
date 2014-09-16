@@ -1,7 +1,5 @@
 #include <stdio.h>
-
 #include <stdlib.h>
-
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -9,16 +7,12 @@
 #include <sys/select.h>
 #include <netinet/in.h> 
 #include <netdb.h>
-
 #include <errno.h>
 
 #define PORT	     10110
-
-#define MAX_MESS_LEN 8192
-
 #define WINDOW_SIZE 256
-
 #define MAX_PACKET_SIZE 1400
+#define PAYLOAD_SIZE MAX_PACKET_SIZE-2*sizeof(char)
 
 /* Struct for generic packet */
 typedef struct dummy_packet {
@@ -50,5 +44,5 @@ typedef struct dummy_packet_2 {
     char payload[MAX_PACKET_SIZE- 2*sizeof(char)];    
 } DataPacket;
 
-
+/* TODO: Make a struct for end packet */
 
