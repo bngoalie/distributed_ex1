@@ -218,15 +218,12 @@ int main(int argc, char **argv)
                 bytes = fread (input_buf, 1, PAYLOAD_SIZE, fr);
                 input_buf[bytes] = 0;
                 packet = malloc(sizeof(Packet));
-                
-                if (bytes < PAYLOAD_SIZE)
-                {
-                     /* TODO: If size read from file is less than max, cast to end packet type */
-                }
-                else
-                {
-                    /* TODO: If full-size packet, cast to data packet type */
-                }
+                packet->               
+ 
+                if(feof(fr)) /* If we've reached the EOF, set type = 2 */
+                    packet->type = (char)2;
+                else /* If full-size packet, set type = 1 */
+                    packet->type = (char)1;
                 
                 sendto_dbg( ss, input_buf, strlen(input_buf), 0, 
                 (struct sockaddr *)&send_addr, sizeof(send_addr) );

@@ -44,5 +44,3 @@ typedef struct dummy_packet2 {
     char payload[MAX_PACKET_SIZE- 2*sizeof(char)];    
 } DataPacket;
 
-/* TODO: Make a struct for end packet */
-
