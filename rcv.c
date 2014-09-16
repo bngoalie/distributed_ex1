@@ -24,7 +24,16 @@ typedef struct dummy_node
 
 Node *transfer_queue_head = NULL;
 Node *transfer_queue_tail = NULL;
+
+typedef struct dummy_nack_node
+{
+    char id;
+    struct dummy_nack_node *next;
+} NackNode;
     
+NackNode *nack_queue_head = NULL;
+NackNode *nack_queue_tail = NULL;
+
 int main()
 {
     struct sockaddr_in    name;
@@ -45,7 +54,7 @@ int main()
     int                   sequence_number = -1;
     int                   size_of_last_payload;
     FILE *fw = NULL; /* Pointer to dest file, to which we write  */
-    
+ 
     sr = socket(AF_INET, SOCK_DGRAM, 0);  /* socket for receiving (udp) */
     if (sr<0) {
         perror("Ucast: socket");
@@ -156,33 +165,60 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
 
 }
 
-/* Need to pass in size of packet  */
-void handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
+/* Returns possibly updated sequence number  */
+int handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
                       int ss, struct sockaddr_in *send_addr, 
-                      int sequence_number) {
+                      int sequence_number, char *nackListHead) {
     /* If the packet has not been set yet, but it in the window */
     if (window[(packet->id) % WINDOW_SIZE] == NULL) {
        window[(packet->id) % WINDOW_SIZE] = packet->payload;
     }
     /* If the received packet id is the expected id */
     if (packet->id == (char) ((sequence_number + 1) % WINDOW_SIZE)) {
-        int itr = packet->id;
+        int itr = (packet->id) % WINDOW_SIZE;
         /* Write payload to file */
         while(window[itr] != NULL) {
+            sequence_number = itr;
             /* TODO: Do we need to check how many bytes fwrite wrote? (it's return val) */
             /* payload size = packet_size - size of ID field - size of type field*/
             fwrite(window[itr]->payload, 1, packet_size - sizeof(window[itr]->id) - sizeof(window[itr]->type), fw);
             free(window[itr]);
             window[itr] = NULL;
             itr++;
+            itr %= WINDOW_SIZE;
         }
-        /* Write data from all succeeding packets stored in window, increment 
-sequence_number */ 
-        /* increment sequence number */
-        sequence_number++;
-        sequence_number %= WINDOW_SIZE;
     }
     /* Send ack-nack packet*/
+    Packet *responsePacket = malloc(sizeof(Packet));
+    if (!responsePacket) {
+        printf("Malloc failed for not-ready-for-tranfer Packet.\n");
+        exit(0);
+    }
+    /*IP address of host to send to.*/
+    send_addr->sin_addr.s_addr = ip; 
+     
+    /* Ack-nack packet type */
+    responsePacket->type = (char) 2;
+    responsePacket->payload[0] = (char)sequence_number;
+    int number_of_nacks = transferNacksToPayload(&responsePacket[1]); 
+    sendto_dbg(ss, (char *)packet, sizeof(packet->id) + number_of_nacks + 1, 0,
+            (struct sockaddr *)send_addr, sizeof(*send_addr));
+    }
+
+    /* Return new sequence number */
+    return sequence_number;
+}
+
+int transferNacksToPayload(char *nack_payload_ptr) {
+    int number_of_nacks_added = 0;
+    NackNode *itr = nack_queue_head;
+    while (itr != NULL) {
+        memcpy(nack_payload_ptr, itr->id, sizeof(itr->id)); 
+        itr++;
+        nack_payload_ptr++;
+        number_of_nacks_added++;
+    }
+    return number_of_nacks_added;
 }
 
 void handleTransferPacket(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr) {
