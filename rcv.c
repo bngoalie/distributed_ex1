@@ -43,6 +43,7 @@ int main()
     Packet                *rcvd_packet;
     DataPacket            *window[WINDOW_SIZE]; 
     int                   sequence_number = -1;
+    int                   size_of_last_payload;
     FILE *fw = NULL; /* Pointer to dest file, to which we write  */
     
     sr = socket(AF_INET, SOCK_DGRAM, 0);  /* socket for receiving (udp) */
@@ -155,7 +156,7 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
 
 }
 
-
+/* Need to pass in size of packet  */
 void handleDataPacket(DataPacket *packet, FILE *fw, int ip, int ss, 
                       struct sockaddr_in *send_addr, int sequence_number) {
     /* If the received packet id is the expected id */
