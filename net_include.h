@@ -22,8 +22,10 @@
 
 /* Struct for generic packet */
 typedef struct dummy_packet {
-    /* Types for ncp packets: request transfer, regular data, final data
-       Types for rcv packets: ready to transfer, ack & nacks */
+    /* Types for ncp packets: request transfer(0), regular data(1), 
+     * final data(2).
+     * Types for rcv packets: ready to transfer(0), not ready for transfer (1), 
+ack & nacks(2). */
     char type;
     /* ncp payloads: for transfer request, just the name of the file. 
      *               for all other types: bytes for the file

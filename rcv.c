@@ -46,6 +46,7 @@ int main()
     char                  input_buf[80];
     struct timeval        timeout;
     Packet                *rcvd_packet;
+    DataPacket            *window[WINDOW_SIZE]; 
 
     FILE *fw = NULL; /* Pointer to dest file, to which we write  */
     
@@ -156,19 +157,35 @@ void handleTransferPacket(Packet *packet, FILE *fw, int ip, int ss, struct socka
     /* If the ip is not in the queue, we want to add it to the tranfer queue */
     if (!isInQueue(ip)) {
         addToQueue(packet, ip);
-        /* If the current sender is first in the queue, want to initiate 
-tranfer. */
-        if (transfer_queue_head->sender_ip == ip) {
-            /* handle tranfer initiation: ready for tranfer packet, open file 
-writer */
-            initiateTransfer(packet, fw, ip, ss, send_addr);
-            /* Only open file for writing if not already opened. */
-            if(fw != NULL && (fw = fopen(packet->payload, "w")) == NULL) {
-                perror("fopen");
-                exit(0);
-            }
-        }
     }
+    /* If the current sender is first in the queue, want to initiate 
+tranfer. */
+    if (transfer_queue_head->sender_ip == ip) {
+        /* handle transfer initiation: ready for tranfer packet, open file 
+writer */
+        initiateTransfer(packet, fw, ip, ss, send_addr);
+        /* Only open file for writing if not already opened. */
+        if(fw != NULL && (fw = fopen(packet->payload, "w")) == NULL) {
+            perror("fopen");
+            exit(0);
+        }
+    } else {
+        /* Send not-ready-for-transfer packet */
+        Packet *responsePacket = malloc(sizeof(Packet));
+        if (!responsePacket) {
+            printf("Malloc failed for not-ready-for-tranfer Packet.\n");
+            exit(0);
+        }
+        /*IP address of host to send to.*/
+        send_addr->sin_addr.s_addr = ip; 
+        
+        /* Ready-for-transfer packet type */
+        responsePacket->type = (char) 1;
+        
+        /* Send ready-for-transfer packet */
+        sendto_dbg(ss, (char *)packet, sizeof(char), 0,
+                (struct sockaddr *)send_addr, sizeof(*send_addr));
+        }
 }
 
 char isInQueue(int ip) {
@@ -203,15 +220,18 @@ void addToQueue(Packet *packet, int ip) {
 */
 void initiateTransfer(Packet *packet, FILE *fw, int ip, int ss, 
                       struct sockaddr_in *send_addr) {
-    Packet *responsePacket = malloc(sizeof(packet));
+    Packet *responsePacket = malloc(sizeof(Packet));
     if (!responsePacket) {
         printf("Malloc failed for ready-for-tranfer response packet.\n");
         exit(0);
     }
     /*IP address of host to send to.*/
-    send_addr->sin_addr.s_addr = host_num; 
+    send_addr->sin_addr.s_addr = ip; 
     
+    /* Ready-for-transfer packet type */
     responsePacket->type = (char) 0;
+    
+    /* Send ready-for-transfer packet */
     sendto_dbg(ss, (char *)packet, sizeof(char), 0,
                (struct sockaddr *)send_addr, sizeof(*send_addr));
     /* Only open file for writing if not already opened. */
