@@ -31,11 +31,6 @@ int main()
     struct sockaddr_in    send_addr;
     struct sockaddr_in    from_addr;
     socklen_t             from_len;
-    struct hostent        h_ent;
-    struct hostent        *p_h_ent;
-    char                  host_name[NAME_LENGTH] = {'\0'};
-    char                  my_name[NAME_LENGTH] = {'\0'};
-    int                   host_num;
     int                   from_ip;
     int                   ss,sr;
     fd_set                mask;
@@ -47,7 +42,7 @@ int main()
     struct timeval        timeout;
     Packet                *rcvd_packet;
     DataPacket            *window[WINDOW_SIZE]; 
-
+    int                   sequence_number = -1;
     FILE *fw = NULL; /* Pointer to dest file, to which we write  */
     
     sr = socket(AF_INET, SOCK_DGRAM, 0);  /* socket for receiving (udp) */
@@ -87,8 +82,13 @@ int main()
     for(;;)
     {
         temp_mask = mask;
-        timeout.tv_sec = 10;
-	timeout.tv_usec = 0;
+        if (sequence_number < 0) {
+            timeout.tv_sec = 10;
+            timeout.tv_usec = 0;
+        } else {
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 10;
+        }
         num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
         if (num > 0) {
             if ( FD_ISSET( sr, &temp_mask) ) {
@@ -105,6 +105,8 @@ int main()
                     handleTransferPacket(rcvd_packet, fw, from_ip, ss, &send_addr);             
                 } else {
                     /* TODO: use function for handling data packet. */
+                    handleDataPacket((DataPacket *) rcvd_packet, fw, from_ip,
+                                     &send_addr);
                 }
 
                 printf( "Received from (%d.%d.%d.%d): %s\n", 
@@ -151,6 +153,21 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
 
     printf( "Sending from %s to %s.\n", my_name, host_name );
 
+}
+
+
+void handleDataPacket(DataPacket *packet, FILE *fw, int ip, int ss, 
+                      struct sockaddr_in *send_addr, int sequence_number) {
+    /* If the received packet id is the expected id */
+    if (packet->id == (char) ((sequence_number + 1) % WINDOW_SIZE)) {
+        /* Write payload to file */
+        /* Write data from all succeeding packets stored in window, increment 
+sequence_number */ 
+        /* increment sequence number */
+        sequence_number++;
+        sequence_number %= WINDOW_SIZE;
+    }
+    /* Send ack-nack packet*/
 }
 
 void handleTransferPacket(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr) {
