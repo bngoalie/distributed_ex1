@@ -1,12 +1,15 @@
+/* Includes */
 #include "net_include.h"
 #include "sendto_dbg.h"
 
+/* Constants */
 #define NAME_LENGTH 80
 
+/* Function prototypes */
 int gethostname(char*,size_t);
-
 void PromptForHostName( char *my_name, char *host_name, size_t max_len ); 
 
+/* Main TODO: This is way too long, break it into functions */
 int main(int argc, char **argv)
 {
     struct sockaddr_in    name;
@@ -24,16 +27,19 @@ int main(int argc, char **argv)
     fd_set                dummy_mask,temp_mask;
     int                   bytes;
     int                   num;
-    char                  mess_buf[MAX_MESS_LEN];
+    char                  mess_buf[MAX_PACKET_SIZE];
     char                  input_buf[80];
+    char                  packet_id;
+    char                  begun;
     struct timeval        timeout;
-    int loss_rate;
-    FILE *fr; /* Pointer to source file, which we read */
-    char *dest_file_name;
-    char *source_file_name; 
-    int dest_file_str_len, host_str_len;
-    Packet *packet;
-    int packet_size;
+    int                   loss_rate;
+    FILE                  *fr; /* Pointer to source file, which we read */
+    char                  *dest_file_name;
+    char                  *source_file_name; 
+    int                   dest_file_str_len, host_str_len;
+    Packet                *packet;
+    int                   packet_size;
+    
 
     /* Need three arguements: loss_rate_percent, source_file_name, and 
        dest_file_name@comp_name */
@@ -138,53 +144,92 @@ int main(int argc, char **argv)
        payload/name of destination file name) */
     sendto_dbg(ss, (char *)packet, packet_size, 0,
 		   (struct sockaddr *)&send_addr, sizeof(send_addr));
+    
+    /* Prepare for transfer */
+    packet_id = 0;  /* Start with packet 0 */
+    begun = 0;      /* We have not begun transfer */
 
+    /* Format masks for IO multiplexing */
     FD_ZERO( &mask );
     FD_ZERO( &dummy_mask );
     FD_SET( sr, &mask );
+
+    /* Set delay to three seconds while waiting to init */
+    timeout.tv_sec = 3; 
+	timeout.tv_usec = 0;
+
+    /* Indefinite I/O multiplexing loop */
     for(;;)
     {
         temp_mask = mask;
         
-        /* TODO: set number of usec (microsec) appropriately */
-        timeout.tv_sec = 0;
-	    timeout.tv_usec = 0;
+        /* Multiplex select */
         num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, 
                       &timeout);
-        if (num > 0) {
-            if ( FD_ISSET( sr, &temp_mask) ) {
+        if (num > 0)    /* Select has been triggered */ 
+        {
+            if ( FD_ISSET( sr, &temp_mask) ) /* Receiving socket has packet */
+            {
                 from_len = sizeof(from_addr);
-                /* get data from ethernet interface*/
+                /* Get data from ethernet interface */
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
                 mess_buf[bytes] = 0;
                 from_ip = from_addr.sin_addr.s_addr;
-
-                printf( "Received from (%d.%d.%d.%d): %s\n", 
-								(htonl(from_ip) & 0xff000000)>>24,
-								(htonl(from_ip) & 0x00ff0000)>>16,
-								(htonl(from_ip) & 0x0000ff00)>>8,
-								(htonl(from_ip) & 0x000000ff),
-								mess_buf );
-
-            } else {
-                /* TODO: what happened? */
+                
+                if(begun == 0) /* Transfer has not yet begun */
+                {
+                    if (mess_buf[0] == 0) /* Receiver is ready TODO: cast to packet type */
+                    {
+                        begun = 1;
+                        timeout.tv_sec = 0;
+                        timeout.tv_usec= 500; /* Send packet every 0.5ms */
+                    }
+                    else    /* Receiver is NOT ready */
+                    {
+                        printf("The receiver is currently busy handling another transfer.");
+                    }
+                }
+                else    /* Transfer has already begun. Process ack/nacks */
+                {
+                    /* TODO: ACK/NACK QUEUE/RESPONSE LOGIC HERE */ 
+                }
+            } 
+            else    /* Something else triggered select (shouldn't happen) */
+            {
+                perror("ncp: invalid select option");
+                exit(1);    
             }
-	} else {
-                /* Select timed out. Send a packet.
-                   TODO: If haven't reached end of window, and nack queue is 
-                   empty or nothing in nack queue should be sent again 
-                   TODO: read chunk from file (see filecopy.c) */
-                bytes = read( 0, input_buf, sizeof(input_buf) );
+	    } 
+        else 
+        {
+            /* Select has timed out. Send a packet. */
+
+            if (begun == 0) /* Transfer has not yet begun. Send transfer packet */
+            {
+                sendto_dbg(ss, (char *)packet, packet_size, 0,
+		        (struct sockaddr *)&send_addr, sizeof(send_addr));
+                printf("Attempting to initiate transfer");
+            }
+            else /* Transfer has already begun. Send data packet */
+            {
+                /* TODO: If haven't reached end of window, and nack queue is 
+                empty or nothing in nack queue should be sent again 
+                
+                TODO: read chunk from file (see filecopy.c) */
+                //bytes = read( 0, input_buf, sizeof(input_buf) );
+                bytes = fread (input_buf, 1, BUF_SIZE, fr);
                 input_buf[bytes] = 0;
                 printf( "There is an input: %s\n", input_buf );
-                /* TODO: change to use sendto_dbg */
-                sendto( ss, input_buf, strlen(input_buf), 0, 
-                    (struct sockaddr *)&send_addr, sizeof(send_addr) );
+                sendto_dbg( ss, input_buf, strlen(input_buf), 0, 
+                (struct sockaddr *)&send_addr, sizeof(send_addr) );
+        
+                /* TODO: Store packet in array for future use */
+                /* Increment ID */ 
+            }
+            
         }
     }
-
     return 0;
-
 }
