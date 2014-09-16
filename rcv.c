@@ -160,6 +160,7 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
 void handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
                       int ss, struct sockaddr_in *send_addr, 
                       int sequence_number) {
+    /* If the packet has not been set yet, but it in the window */
     if (window[(packet->id) % WINDOW_SIZE] == NULL) {
        window[(packet->id) % WINDOW_SIZE] = packet->payload;
     }
@@ -168,8 +169,12 @@ void handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
         int itr = packet->id;
         /* Write payload to file */
         while(window[itr] != NULL) {
-            nwritten = fwrite(window[itr]->payload, 1, 
-                              packet_size - 2 *sizeof(char), fw);
+            /* TODO: Do we need to check how many bytes fwrite wrote? (it's return val) */
+            /* payload size = packet_size - size of ID field - size of type field*/
+            fwrite(window[itr]->payload, 1, packet_size - sizeof(window[itr]->id) - sizeof(window[itr]->type), fw);
+            free(window[itr]);
+            window[itr] = NULL;
+            itr++;
         }
         /* Write data from all succeeding packets stored in window, increment 
 sequence_number */ 
