@@ -157,11 +157,20 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
 }
 
 /* Need to pass in size of packet  */
-void handleDataPacket(DataPacket *packet, FILE *fw, int ip, int ss, 
-                      struct sockaddr_in *send_addr, int sequence_number) {
+void handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
+                      int ss, struct sockaddr_in *send_addr, 
+                      int sequence_number) {
+    if (window[(packet->id) % WINDOW_SIZE] == NULL) {
+       window[(packet->id) % WINDOW_SIZE] = packet->payload;
+    }
     /* If the received packet id is the expected id */
     if (packet->id == (char) ((sequence_number + 1) % WINDOW_SIZE)) {
+        int itr = packet->id;
         /* Write payload to file */
+        while(window[itr] != NULL) {
+            nwritten = fwrite(window[itr]->payload, 1, 
+                              packet_size - 2 *sizeof(char), fw);
+        }
         /* Write data from all succeeding packets stored in window, increment 
 sequence_number */ 
         /* increment sequence number */
