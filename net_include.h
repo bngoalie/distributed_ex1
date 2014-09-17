@@ -12,15 +12,9 @@
 #define PORT	        10110
 #define WINDOW_SIZE     256
 #define MAX_PACKET_SIZE 1400
-<<<<<<< HEAD
-#define PAYLOAD_SIZE MAX_PACKET_SIZE-2*sizeof(char)
-/* TODO: consider using a #define for type, id, so don't have to use sizeof(char), but instead sizeof(TYPE)
- * so only need to change in header and rest of math would work out. */
 #define PACKET_ID char
 #define PACKET_TYPE char
-=======
 #define PAYLOAD_SIZE    MAX_PACKET_SIZE-2*sizeof(char)
->>>>>>> 5ed8acaf4751645bf9a941138599bf5812cf160c
 
 /* Packet: Struct for generic packet */
 typedef struct dummy_packet {
