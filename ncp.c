@@ -13,7 +13,7 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len );
 typedef struct dummy_nack_node {
     int             nack_count;
     PACKET_ID       id;
-    dummy_nack_node *next;
+    struct dummy_nack_node *next;
 } NackNode;
 
 /* Main TODO: This is way too long, break it into functions */
@@ -44,12 +44,14 @@ int main(int argc, char **argv)
     char                    *source_file_name; 
     int                     dest_file_str_len, host_str_len;
     Packet                  *packet;
+    Packet                  *rcvd_packet;
     DataPacket              *dPacket;
     int                     packet_size;    
     char                    end_of_window;
     char                    start_of_window;
     char                    at_end_of_window;
-    NackNode                nack_list_head = NULL;
+    NackNode                *nack_list_head = NULL;
+    DataPacket              *window[WINDOW_SIZE];
 
     /* Need three arguements: loss_rate_percent, source_file_name, and 
        dest_file_name@comp_name */
@@ -167,6 +169,12 @@ int main(int argc, char **argv)
     timeout.tv_sec = 1; 
 	timeout.tv_usec = 0;
 
+    /* Set window DataPacket pointers to NULL*/ 
+    int i;
+    for (i = 0; i < WINDOW_SIZE; i++) {
+        window[i] = NULL;
+    }
+
     /* Indefinite I/O multiplexing loop */
     int eof = 1;
     while(eof != 0)
@@ -196,11 +204,15 @@ int main(int argc, char **argv)
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
-                
+                rcvd_packet = (Packet *)mess_buf;
                 if(begun == 0) /* Transfer has not yet begun */
                 {
-                    if (mess_buf[0] == 0) /* Receiver is ready TODO: cast to packet type */
+                    if (rcvd_packet->type == (PACKET_ID)0) /* Receiver is ready TODO: cast to packet type */
                     {
+                        if (packet != NULL) {
+                            free(packet);
+                            packet = NULL;
+                        }
                         begun = 1;
                         end_of_window = (char) (WINDOW_SIZE - 1);
                         start_of_window = 0;
@@ -217,7 +229,7 @@ int main(int argc, char **argv)
                 }
                 else    /* Transfer has already begun. Process ack/nacks */
                 {
-                    char ack_id = *(mess_buf[1]);
+                    char ack_id = rcvd_packet->payload[0];
                     if (ack_id > start_of_window || ack_id < end_of_window) {
                         /* free packets up to ack_id, move window*/
                     }
@@ -240,7 +252,7 @@ int main(int argc, char **argv)
 		        (struct sockaddr *)&send_addr, sizeof(send_addr));
                 printf("Attempting to initiate transfer\n");
             }
-            else if (at_end_of_window == 0)/* Transfer has already begun. Send data packet */
+            else if (window[packet_id % WINDOW_SIZE] == NULL)/* Transfer has already begun. Send data packet */
             {
                 /* TODO: Check if nack queue exisits. If so, process & send nack */
                 /* TODO: If haven't reached end of window, and nack queue is 
@@ -268,14 +280,12 @@ int main(int argc, char **argv)
                 dPacket->id = (char) (packet_id % WINDOW_SIZE);
                 packet_id++;
                 
-                /*Is this actually working??? */
                 memcpy(&(dPacket->payload), input_buf, bytes);
                 sendto_dbg( ss, (char *)dPacket, bytes + 2*sizeof(char), 0, /* change to use cast of dPacket */
                 (struct sockaddr *)&send_addr, sizeof(send_addr) );
 
                 /* TODO: Store packet in array for future use */
-                free(dPacket);
-                dPacket = NULL;
+                window[packet_id % WINDOW_SIZE] = dPacket;
             } 
             else {
                 /* We have timed out after hitting the end of the window*/
@@ -283,5 +293,12 @@ int main(int argc, char **argv)
             }
         }
     }
+    /* Free memory from window*/ 
+    int itr;
+    for (itr = 0; itr < WINDOW_SIZE; itr++) {
+        if (window[itr] != NULL) {
+            free(window[itr]);
+        }
+    } 
     return 0;
 }
