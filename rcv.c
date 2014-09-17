@@ -11,11 +11,11 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len );
 void handleTransferPacket(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr);
 char isInQueue(int ip);
 void addToQueue(Packet *packet, int ip);
-void initiateTransfer(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr);
+void initiateTransfer(char *file_name, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr);
 int transferNacksToPayload(char *nack_payload_ptr, char rcvd_id, char sequence_id);
 int handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
                       int ss, struct sockaddr_in *send_addr, 
-                      int sequence_number, DataPacket **window);
+                      int sequence_number);
 int transferNacksToPayload(char *nack_payload_ptr, char rcvd_id, char sequence_id); 
     
 /* Structs */
@@ -37,8 +37,10 @@ typedef struct dummy_nack_node
     
 NackNode *nack_queue_head = NULL;
 NackNode *nack_queue_tail = NULL;
+DataPacket            *window[WINDOW_SIZE]; 
+char                  is_transferring = 0;     
 
-int main()
+int main(int argc, char **argv)
 {
     struct sockaddr_in    name;
     struct sockaddr_in    send_addr;
@@ -54,12 +56,22 @@ int main()
     char                  input_buf[80];
     struct timeval        timeout;
     Packet                *rcvd_packet;
-    DataPacket            *window[WINDOW_SIZE]; 
     int                   sequence_number = -1;
     int                   size_of_last_payload;
     FILE *fw = NULL; /* Pointer to dest file, to which we write  */
+    int                   loss_rate;
+    int                   timeout_counter = 0;
 
-    sendto_dbg_init(0); 
+    /* Need one arguements: loss_rate_percent */
+    if(argc != 2) {
+        printf("Usage: rcv <loss_rate_percent>\n");
+        exit(0);
+    }
+
+    /* Set loss rate */
+    loss_rate = atoi(argv[1]);
+    sendto_dbg_init(loss_rate);
+ 
     sr = socket(AF_INET, SOCK_DGRAM, 0);  /* socket for receiving (udp) */
     if (sr<0) {
         perror("Ucast: socket");
@@ -91,18 +103,15 @@ int main()
     FD_ZERO( &mask );
     FD_ZERO( &dummy_mask );
     FD_SET( sr, &mask );
-    FD_SET( (long)0, &mask ); /* stdin */
-    /* TODO: For receiving tranfer request packets, the payload does not include
-       the null-terminator character. Must be added. */
     for(;;)
     {
         temp_mask = mask;
-        if (sequence_number < 0) {
+        if (is_transferring == 0) {
             timeout.tv_sec = 10;
             timeout.tv_usec = 0;
         } else {
-            timeout.tv_sec = 0;
-            timeout.tv_usec = 10;
+            timeout.tv_sec = 1;
+            timeout.tv_usec = 0;
         }
         num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
         if (num > 0) {
@@ -122,8 +131,8 @@ int main()
                     /* TODO: use function for handling data packet. */
                     sequence_number = handleDataPacket(
                                         (DataPacket *) rcvd_packet, bytes, fw,
-                                        from_ip, ss, &send_addr,
-                                        sequence_number, window);
+                                        from_ip, ss, &send_addr, 
+                                        sequence_number);
                 }
 
                 printf( "Received from (%d.%d.%d.%d): %s\n", 
@@ -140,9 +149,17 @@ int main()
                 sendto( ss, input_buf, strlen(input_buf), 0, 
                     (struct sockaddr *)&send_addr, sizeof(send_addr) );
             }
-	} else {
-		printf(".");
-		fflush(0);
+	    } else {
+            if (is_transferring == 0 && transfer_queue_head != NULL) {
+                initiateTransfer(transfer_queue_head->name, fw, transfer_queue_head->sender_ip, ss, &send_addr);
+                is_transferring = 1;
+                timeout_counter = 0;
+            }
+            if (is_transferring && ++timeout_counter >= 10) {
+            
+            }
+		    printf(".");
+		    fflush(0);
         }
     }
 
@@ -175,11 +192,11 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
 /* Returns possibly updated sequence number  */
 int handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
                       int ss, struct sockaddr_in *send_addr, 
-                      int sequence_number, DataPacket **window) {
+                      int sequence_number) {
     int number_of_nacks = 0;
     /* If the packet has not been set yet, but it in the window */
     if (window[(packet->id) % WINDOW_SIZE] == NULL) {
-       window[(packet->id) % WINDOW_SIZE] = packet->payload;
+       window[(packet->id) % WINDOW_SIZE] = packet;
     }
     /* If the received packet id is the expected id */
     if (packet->id == (char) ((sequence_number + 1) % WINDOW_SIZE)) {
@@ -246,12 +263,7 @@ tranfer. */
     if (transfer_queue_head->sender_ip == ip) {
         /* handle transfer initiation: ready for tranfer packet, open file 
 writer */
-        initiateTransfer(packet, fw, ip, ss, send_addr);
-        /* Only open file for writing if not already opened. */
-        if(fw != NULL && (fw = fopen(packet->payload, "w")) == NULL) {
-            perror("fopen");
-            exit(0);
-        }
+        initiateTransfer(packet->payload, fw, ip, ss, send_addr);
     } else {
         /* Send not-ready-for-transfer packet */
         Packet *responsePacket = malloc(sizeof(Packet));
@@ -266,7 +278,7 @@ writer */
         responsePacket->type = (char) 1;
         
         /* Send ready-for-transfer packet */
-        sendto_dbg(ss, (char *)packet, sizeof(char), 0,
+        sendto_dbg(ss, (char *)responsePacket, sizeof(char), 0,
                 (struct sockaddr *)send_addr, sizeof(*send_addr));
         }
 }
@@ -301,8 +313,9 @@ void addToQueue(Packet *packet, int ip) {
 }
 /* fixed usage. 
 */
-void initiateTransfer(Packet *packet, FILE *fw, int ip, int ss, 
+void initiateTransfer(char *file_name, FILE *fw, int ip, int ss, 
                       struct sockaddr_in *send_addr) {
+    /* Create ready for transfer response packet */
     Packet *responsePacket = malloc(sizeof(Packet));
     if (!responsePacket) {
         printf("Malloc failed for ready-for-tranfer response packet.\n");
@@ -315,11 +328,32 @@ void initiateTransfer(Packet *packet, FILE *fw, int ip, int ss,
     responsePacket->type = (char) 0;
     
     /* Send ready-for-transfer packet */
-    sendto_dbg(ss, (char *)packet, sizeof(char), 0,
+    sendto_dbg(ss, (char *)responsePacket, sizeof(char), 0,
                (struct sockaddr *)send_addr, sizeof(*send_addr));
-    /* Only open file for writing if not already opened. */
-    if(fw != NULL && (fw = fopen(packet->payload, "w")) == NULL) {
-        perror("fopen");
-        exit(0);
+    
+    if (is_transferring == 0) {
+         /* Clear window for new transfer. */
+        int i;
+        for (i = 0; i < WINDOW_SIZE; i++) {
+            if (window[i] != NULL) {
+                free(window[i]);
+                window[i] = NULL;
+            }
+        }
+        /* Clear nack queue for new transfer */
+        NackNode *tmp;
+        while (nack_queue_head != NULL) {
+            tmp = nack_queue_head;
+            nack_queue_head = nack_queue_head->next;
+            free(tmp);
+        }
+        nack_queue_tail = NULL;
+
+
+        /* Only open file for writing if not already opened. */
+        if(fw != NULL && (fw = fopen(file_name, "w")) == NULL) {
+            perror("fopen");
+            exit(0);
+        }
     }
 }
