@@ -12,33 +12,34 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len );
 /* Main TODO: This is way too long, break it into functions */
 int main(int argc, char **argv)
 {
-    struct sockaddr_in    name;
-    struct sockaddr_in    send_addr;
-    struct sockaddr_in    from_addr;
-    socklen_t             from_len;
-    struct hostent        h_ent;
-    struct hostent        *p_h_ent;
-    char                  *host_name;
-    char                  my_name[NAME_LENGTH] = {'\0'};
-    int                   host_num;
-    int                   from_ip;
-    int                   ss,sr;
-    fd_set                mask;
-    fd_set                dummy_mask,temp_mask;
-    int                   bytes;
-    int                   num;
-    char                  mess_buf[MAX_PACKET_SIZE];
-    char                  input_buf[80];
-    char                  packet_id;
-    char                  begun;
-    struct timeval        timeout;
-    int                   loss_rate;
-    FILE                  *fr; /* Pointer to source file, which we read */
-    char                  *dest_file_name;
-    char                  *source_file_name; 
-    int                   dest_file_str_len, host_str_len;
-    Packet                *packet;
-    int                   packet_size;
+    struct sockaddr_in      name;
+    struct sockaddr_in      send_addr;
+    struct sockaddr_in      from_addr;
+    socklen_t               from_len;
+    struct hostent          h_ent;
+    struct hostent          *p_h_ent;
+    char                    *host_name;
+    char                    my_name[NAME_LENGTH] = {'\0'};
+    int                     host_num;
+    int                     from_ip;
+    int                     ss,sr;
+    fd_set                  mask;
+    fd_set                  dummy_mask,temp_mask;
+    int                     bytes;
+    int                     num;
+    char                    mess_buf[MAX_PACKET_SIZE];
+    char                    input_buf[80];
+    char                    packet_id;
+    char                    begun;
+    struct timeval          timeout;
+    int                     loss_rate;
+    FILE                    *fr; /* Pointer to source file, which we read */
+    char                    *dest_file_name;
+    char                    *source_file_name; 
+    int                     dest_file_str_len, host_str_len;
+    Packet                  *packet;
+    DataPacket              *dPacket;
+    int                     packet_size;
     
 
     /* Need three arguements: loss_rate_percent, source_file_name, and 
@@ -168,6 +169,7 @@ int main(int argc, char **argv)
         {
             if ( FD_ISSET( sr, &temp_mask) ) /* Receiving socket has packet */
             {
+                printf("RECEIVED A PACKET");
                 /* Get data from ethernet interface */
                 from_len = sizeof(from_addr);
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
@@ -181,7 +183,8 @@ int main(int argc, char **argv)
                     if (mess_buf[0] == 0) /* Receiver is ready TODO: cast to packet type */
                     {
                         begun = 1;
-                        timeout.tv_sec = 0;
+                        printf("Transfer has begun...");
+                        timeout.tv_sec = 10;
                         timeout.tv_usec= 500; /* Send packet every 0.5ms */
                     }
                     else    /* Receiver is NOT ready */
@@ -211,21 +214,30 @@ int main(int argc, char **argv)
             }
             else /* Transfer has already begun. Send data packet */
             {
+                /* TODO: Check if nack queue exisits. If so, process & send nack */
                 /* TODO: If haven't reached end of window, and nack queue is 
                 empty or nothing in nack queue should be sent again (what???) */ 
                 
                 /* Read file into char buffer */
                 bytes = fread (input_buf, 1, PAYLOAD_SIZE, fr);
                 input_buf[bytes] = 0;
-                packet = malloc(sizeof(Packet));
-                packet->               
+                
+                /* Form data packet */
+                dPacket = malloc(sizeof(DataPacket));
+
+                /* TODO: Check window limit - Window start is oldest packet not acked*/               
  
                 if(feof(fr)) /* If we've reached the EOF, set type = 2 */
-                    packet->type = (char)2;
+                    dPacket->type = (char)2;
                 else /* If full-size packet, set type = 1 */
-                    packet->type = (char)1;
+                    dPacket->type = (char)1;
+
+                dPacket->id = packet_id;
+                packet_id++;
                 
-                sendto_dbg( ss, input_buf, strlen(input_buf), 0, 
+                memcpy(&(dPacket->payload), input_buf, bytes);
+
+                sendto_dbg( ss, input_buf, strlen(input_buf), 0, /* change to use cast of dPacket */
                 (struct sockaddr *)&send_addr, sizeof(send_addr) );
 
                 /* TODO: Store packet in array for future use */
