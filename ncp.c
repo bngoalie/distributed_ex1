@@ -232,6 +232,12 @@ int main(int argc, char **argv)
                     char ack_id = rcvd_packet->payload[0];
                     if (ack_id > start_of_window || ack_id < end_of_window) {
                         /* free packets up to ack_id, move window*/
+                        while (window[ack_id % WINDOW_SIZE] != NULL) {
+                            free(window[ack_id % WINDOW_SIZE]);
+                            ack_id++;
+                        }
+                        start_of_window = ack_id % WINDOW_SIZE; 
+                        end_of_window = (ack_id - 1) % WINDOW_SIZE;
                     }
                     /* TODO: ACK/NACK QUEUE/RESPONSE LOGIC HERE */ 
                 }
