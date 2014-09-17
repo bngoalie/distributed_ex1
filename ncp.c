@@ -21,7 +21,6 @@ int main(int argc, char **argv)
     char                    *host_name;
     char                    my_name[NAME_LENGTH] = {'\0'};
     int                     host_num;
-    int                     from_ip;
     int                     ss,sr;
     fd_set                  mask;
     fd_set                  dummy_mask,temp_mask;
@@ -39,8 +38,7 @@ int main(int argc, char **argv)
     int                     dest_file_str_len, host_str_len;
     Packet                  *packet;
     DataPacket              *dPacket;
-    int                     packet_size;
-    
+    int                     packet_size;    
 
     /* Need three arguements: loss_rate_percent, source_file_name, and 
        dest_file_name@comp_name */
@@ -155,12 +153,24 @@ int main(int argc, char **argv)
     FD_SET( sr, &mask );
 
     /* Set delay to three seconds while waiting to init */
-    timeout.tv_sec = 3; 
+    timeout.tv_sec = 1; 
 	timeout.tv_usec = 0;
 
     /* Indefinite I/O multiplexing loop */
-    for(;;)
+    int eof = 1;
+    while(eof != 0)
     {
+        if (begun == 0) {
+             /* Set delay to three seconds while waiting to init */
+            timeout.tv_sec = 1; 
+	        timeout.tv_usec = 0;
+        } else {
+           timeout.tv_sec = 0;
+           timeout.tv_usec= 500; /* Send packet every 0.5ms */
+        }
+
+
+        printf("sec: %d. usec: %d.\n", timeout.tv_sec, timeout.tv_usec); 
         temp_mask = mask;
         
         /* Multiplex select */
@@ -169,14 +179,13 @@ int main(int argc, char **argv)
         {
             if ( FD_ISSET( sr, &temp_mask) ) /* Receiving socket has packet */
             {
-                printf("RECEIVED A PACKET");
+                printf("RECEIVED A PACKET\n");
                 /* Get data from ethernet interface */
                 from_len = sizeof(from_addr);
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
                 mess_buf[bytes] = 0;
-                from_ip = from_addr.sin_addr.s_addr;
                 
                 if(begun == 0) /* Transfer has not yet begun */
                 {
@@ -184,12 +193,13 @@ int main(int argc, char **argv)
                     {
                         begun = 1;
                         printf("Transfer has begun...");
-                        timeout.tv_sec = 10;
-                        timeout.tv_usec= 500; /* Send packet every 0.5ms */
-                    }
+                   }
                     else    /* Receiver is NOT ready */
                     {
                         printf("The receiver is currently busy handling another transfer.");
+                        timeout.tv_sec = 5;
+                        /* TODO: possibly use new begun state to prevent sending redundant 
+                         *  initiate transfer packets */
                     }
                 }
                 else    /* Transfer has already begun. Process ack/nacks */
@@ -205,12 +215,13 @@ int main(int argc, char **argv)
 	    } 
         else 
         {
+            printf("timeout\n");
             /* Select has timed out. Send a packet. */
             if (begun == 0) /* Transfer has not yet begun. Send transfer packet */
             {
                 sendto_dbg(ss, (char *)packet, packet_size, 0,
 		        (struct sockaddr *)&send_addr, sizeof(send_addr));
-                printf("Attempting to initiate transfer");
+                printf("Attempting to initiate transfer\n");
             }
             else /* Transfer has already begun. Send data packet */
             {
@@ -220,28 +231,30 @@ int main(int argc, char **argv)
                 
                 /* Read file into char buffer */
                 bytes = fread (input_buf, 1, PAYLOAD_SIZE, fr);
-                input_buf[bytes] = 0;
                 
                 /* Form data packet */
                 dPacket = malloc(sizeof(DataPacket));
 
                 /* TODO: Check window limit - Window start is oldest packet not acked*/               
  
-                if(feof(fr)) /* If we've reached the EOF, set type = 2 */
+                if(feof(fr)) /* If we've reached the EOF, set type = 2 */ {
+                    eof = 0;
                     dPacket->type = (char)2;
+                }
                 else /* If full-size packet, set type = 1 */
                     dPacket->type = (char)1;
 
                 dPacket->id = packet_id;
                 packet_id++;
                 
+                /*Is this actually working??? */
                 memcpy(&(dPacket->payload), input_buf, bytes);
-
-                sendto_dbg( ss, input_buf, strlen(input_buf), 0, /* change to use cast of dPacket */
+                sendto_dbg( ss, (char *)dPacket, bytes + 2*sizeof(char), 0, /* change to use cast of dPacket */
                 (struct sockaddr *)&send_addr, sizeof(send_addr) );
 
                 /* TODO: Store packet in array for future use */
-                /* TODO: Increment ID */ 
+                free(dPacket);
+                dPacket = NULL;
             }
         }
     }

@@ -8,12 +8,12 @@
 /* Function prototypes */
 int gethostname(char*,size_t);
 void PromptForHostName( char *my_name, char *host_name, size_t max_len ); 
-void handleTransferPacket(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr);
+void handleTransferPacket(Packet *packet, int ip, int ss, struct sockaddr_in *send_addr);
 char isInQueue(int ip);
 void addToQueue(Packet *packet, int ip);
-void initiateTransfer(char *file_name, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr);
+void initiateTransfer(char *file_name, int ip, int ss, struct sockaddr_in *send_addr);
 int transferNacksToPayload(char *nack_payload_ptr, char rcvd_id, char sequence_id);
-int handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
+int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                       int ss, struct sockaddr_in *send_addr, 
                       int sequence_number);
 int transferNacksToPayload(char *nack_payload_ptr, char rcvd_id, char sequence_id); 
@@ -39,6 +39,7 @@ NackNode *nack_queue_head = NULL;
 NackNode *nack_queue_tail = NULL;
 DataPacket            *window[WINDOW_SIZE]; 
 char                  is_transferring = 0;     
+FILE *fw = NULL;
 
 int main(int argc, char **argv)
 {
@@ -58,7 +59,6 @@ int main(int argc, char **argv)
     Packet                *rcvd_packet;
     int                   sequence_number = -1;
     int                   size_of_last_payload;
-    FILE *fw = NULL; /* Pointer to dest file, to which we write  */
     int                   loss_rate;
     int                   timeout_counter = 0;
 
@@ -121,16 +121,23 @@ int main(int argc, char **argv)
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
+                printf("packet is size: %d\n", bytes);
                 from_ip = from_addr.sin_addr.s_addr;
                 /* TODO: extract logic for handling received packet */
-                rcvd_packet = (Packet *)mess_buf;
+                rcvd_packet = malloc(sizeof(Packet));
+                if (!rcvd_packet) {
+                    printf("Malloc failed for new tranfer queue node.\n");
+                    exit(0);
+                }
+                memcpy((char *)rcvd_packet, mess_buf, MAX_PACKET_SIZE);
                 if (rcvd_packet->type == (char) 0) {
                     /* TODO: Handle tranfer packet */
-                    handleTransferPacket(rcvd_packet, fw, from_ip, ss, &send_addr);             
-                } else {
+                    handleTransferPacket(rcvd_packet, from_ip, ss, &send_addr);             
+                } else if (is_transferring != 0 && transfer_queue_head->sender_ip == from_ip){
                     /* TODO: use function for handling data packet. */
+                    printf("Packet is Data Packet \n");
                     sequence_number = handleDataPacket(
-                                        (DataPacket *) rcvd_packet, bytes, fw,
+                                        (DataPacket *) rcvd_packet, bytes,
                                         from_ip, ss, &send_addr, 
                                         sequence_number);
                 }
@@ -151,7 +158,7 @@ int main(int argc, char **argv)
             }
 	    } else {
             if (is_transferring == 0 && transfer_queue_head != NULL) {
-                initiateTransfer(transfer_queue_head->name, fw, transfer_queue_head->sender_ip, ss, &send_addr);
+                initiateTransfer(transfer_queue_head->name, transfer_queue_head->sender_ip, ss, &send_addr);
                 is_transferring = 1;
                 timeout_counter = 0;
             }
@@ -190,7 +197,7 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
 }
 
 /* Returns possibly updated sequence number  */
-int handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
+int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                       int ss, struct sockaddr_in *send_addr, 
                       int sequence_number) {
     int number_of_nacks = 0;
@@ -206,8 +213,12 @@ int handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
             sequence_number = itr;
             /* TODO: Do we need to check how many bytes fwrite wrote? (it's return val) */
             /* payload size = packet_size - size of ID field - size of type field*/
+            printf("payload: %s\n", window[itr]->payload);
+            if (fw == NULL) {
+                printf("yit it is null\n");
+            }
             fwrite(window[itr]->payload, 1, packet_size - sizeof(window[itr]->id) - sizeof(window[itr]->type), fw);
-            free(window[itr]);
+            /* TODO: free window[itr]? */
             window[itr] = NULL;
             itr++;
             itr %= WINDOW_SIZE;
@@ -252,7 +263,7 @@ int transferNacksToPayload(char *nack_payload_ptr, char rcvd_id, char sequence_i
     return number_of_nacks_added;
 }
 
-void handleTransferPacket(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr) {
+void handleTransferPacket(Packet *packet, int ip, int ss, struct sockaddr_in *send_addr) {
     printf("file name: %s", packet->payload);
     /* If the ip is not in the queue, we want to add it to the tranfer queue */
     if (!isInQueue(ip)) {
@@ -261,9 +272,8 @@ void handleTransferPacket(Packet *packet, FILE *fw, int ip, int ss, struct socka
     /* If the current sender is first in the queue, want to initiate 
 tranfer. */
     if (transfer_queue_head->sender_ip == ip) {
-        /* handle transfer initiation: ready for tranfer packet, open file 
-writer */
-        initiateTransfer(packet->payload, fw, ip, ss, send_addr);
+        /* handle transfer initiation */
+        initiateTransfer(packet->payload, ip, ss, send_addr);
     } else {
         /* Send not-ready-for-transfer packet */
         Packet *responsePacket = malloc(sizeof(Packet));
@@ -274,10 +284,10 @@ writer */
         /*IP address of host to send to.*/
         send_addr->sin_addr.s_addr = ip; 
         
-        /* Ready-for-transfer packet type */
+        /* Not-ready-for-transfer packet type */
         responsePacket->type = (char) 1;
         
-        /* Send ready-for-transfer packet */
+        /* Send not-ready-for-transfer packet */
         sendto_dbg(ss, (char *)responsePacket, sizeof(char), 0,
                 (struct sockaddr *)send_addr, sizeof(*send_addr));
         }
@@ -293,7 +303,7 @@ char isInQueue(int ip) {
     }
     return 0;
 }
-
+ /* TODO: change Packet * to char * for name */ 
 void addToQueue(Packet *packet, int ip) {
     Node *newNode = malloc(sizeof(Node)); 
     if (!newNode) {
@@ -313,7 +323,7 @@ void addToQueue(Packet *packet, int ip) {
 }
 /* fixed usage. 
 */
-void initiateTransfer(char *file_name, FILE *fw, int ip, int ss, 
+void initiateTransfer(char *file_name, int ip, int ss, 
                       struct sockaddr_in *send_addr) {
     /* Create ready for transfer response packet */
     Packet *responsePacket = malloc(sizeof(Packet));
@@ -330,7 +340,7 @@ void initiateTransfer(char *file_name, FILE *fw, int ip, int ss,
     /* Send ready-for-transfer packet */
     sendto_dbg(ss, (char *)responsePacket, sizeof(char), 0,
                (struct sockaddr *)send_addr, sizeof(*send_addr));
-    
+
     if (is_transferring == 0) {
          /* Clear window for new transfer. */
         int i;
@@ -349,11 +359,11 @@ void initiateTransfer(char *file_name, FILE *fw, int ip, int ss,
         }
         nack_queue_tail = NULL;
 
-
         /* Only open file for writing if not already opened. */
-        if(fw != NULL && (fw = fopen(file_name, "w")) == NULL) {
+        if((fw = fopen(file_name, "w")) == NULL) {
             perror("fopen");
             exit(0);
         }
+        is_transferring = 1;
     }
 }
