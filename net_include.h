@@ -15,6 +15,9 @@
 #define PAYLOAD_SIZE MAX_PACKET_SIZE-2*sizeof(char)
 /* TODO: consider using a #define for type, id, so don't have to use sizeof(char), but instead sizeof(TYPE)
  * so only need to change in header and rest of math would work out. */
+#define PACKET_ID char
+#define PACKET_TYPE char
+
 /* Struct for generic packet */
 typedef struct dummy_packet {
     /* Types for ncp packets: request transfer(0), regular data(1), 

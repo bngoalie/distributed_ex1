@@ -12,7 +12,11 @@ void handleTransferPacket(Packet *packet, FILE *fw, int ip, int ss, struct socka
 char isInQueue(int ip);
 void addToQueue(Packet *packet, int ip);
 void initiateTransfer(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr);
-
+int transferNacksToPayload(char *nack_payload_ptr, char rcvd_id, char sequence_id);
+int handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
+                      int ss, struct sockaddr_in *send_addr, 
+                      int sequence_number, DataPacket **window);
+int transferNacksToPayload(char *nack_payload_ptr, char rcvd_id, char sequence_id); 
     
 /* Structs */
 typedef struct dummy_node 
@@ -115,8 +119,8 @@ int main()
                     handleTransferPacket(rcvd_packet, fw, from_ip, ss, &send_addr);             
                 } else {
                     /* TODO: use function for handling data packet. */
-                    handleDataPacket((DataPacket *) rcvd_packet, fw, from_ip,
-                                     &send_addr);
+                    handleDataPacket((DataPacket *) rcvd_packet, bytes, fw, from_ip, ss,
+                                     &send_addr, sequence_number, &window);
                 }
 
                 printf( "Received from (%d.%d.%d.%d): %s\n", 
@@ -168,7 +172,8 @@ void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
 /* Returns possibly updated sequence number  */
 int handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
                       int ss, struct sockaddr_in *send_addr, 
-                      int sequence_number, char *nackListHead) {
+                      int sequence_number, DataPacket **window) {
+    int number_of_nacks = 0;
     /* If the packet has not been set yet, but it in the window */
     if (window[(packet->id) % WINDOW_SIZE] == NULL) {
        window[(packet->id) % WINDOW_SIZE] = packet->payload;
@@ -187,11 +192,15 @@ int handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
             itr++;
             itr %= WINDOW_SIZE;
         }
+    } else {
+        /* This is not the next expected packet. It is already, maybe, added to window above. 
+         * Now possibly update nack queue. */
+         
     }
     /* Send ack-nack packet*/
     Packet *responsePacket = malloc(sizeof(Packet));
     if (!responsePacket) {
-        printf("Malloc failed for not-ready-for-tranfer Packet.\n");
+        printf("Malloc failed for ack-nack Packet.\n");
         exit(0);
     }
     /*IP address of host to send to.*/
@@ -200,20 +209,22 @@ int handleDataPacket(DataPacket *packet, int packet_size, FILE *fw, int ip,
     /* Ack-nack packet type */
     responsePacket->type = (char) 2;
     responsePacket->payload[0] = (char)sequence_number;
-    int number_of_nacks = transferNacksToPayload(&responsePacket[1]); 
-    sendto_dbg(ss, (char *)packet, sizeof(packet->id) + number_of_nacks + 1, 0,
+    number_of_nacks = transferNacksToPayload(&((responsePacket->payload)[1]), packet->id, (char)sequence_number); 
+    sendto_dbg(ss, (char *)packet, sizeof(packet->id) + (number_of_nacks + 1) * sizeof(PACKET_ID), 0,
             (struct sockaddr *)send_addr, sizeof(*send_addr));
-    }
 
     /* Return new sequence number */
     return sequence_number;
 }
 
-int transferNacksToPayload(char *nack_payload_ptr) {
+int transferNacksToPayload(char *nack_payload_ptr, char rcvd_id, char sequence_id) {
     int number_of_nacks_added = 0;
     NackNode *itr = nack_queue_head;
-    while (itr != NULL) {
-        memcpy(nack_payload_ptr, itr->id, sizeof(itr->id)); 
+    while (itr != NULL 
+           && ((sequence_id < rcvd_id && itr->id < rcvd_id)
+                || (rcvd_id < sequence_id
+                    && (rcvd_id > itr->id || itr->id > sequence_id)))) {
+        memcpy(nack_payload_ptr, &itr->id, sizeof(itr->id)); 
         itr++;
         nack_payload_ptr++;
         number_of_nacks_added++;
