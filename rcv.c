@@ -7,7 +7,6 @@
 
 /* Function prototypes */
 int gethostname(char*,size_t);
-void PromptForHostName( char *my_name, char *host_name, size_t max_len ); 
 void handleTransferPacket(Packet *packet, int ip, int ss, struct sockaddr_in *send_addr);
 char isInQueue(int ip);
 void addToQueue(Packet *packet, int ip);
@@ -40,6 +39,7 @@ NackNode *nack_queue_tail = NULL;
 DataPacket            *window[WINDOW_SIZE]; 
 char                  is_transferring = 0;     
 FILE *fw = NULL;
+int                   size_of_last_payload;
 
 int main(int argc, char **argv)
 {
@@ -58,7 +58,6 @@ int main(int argc, char **argv)
     struct timeval        timeout;
     Packet                *rcvd_packet;
     int                   sequence_number = -1;
-    int                   size_of_last_payload;
     int                   loss_rate;
     int                   timeout_counter = 0;
 
@@ -121,7 +120,6 @@ int main(int argc, char **argv)
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
-                printf("packet is size: %d\n", bytes);
                 from_ip = from_addr.sin_addr.s_addr;
                 /* TODO: extract logic for handling received packet */
                 rcvd_packet = malloc(sizeof(Packet));
@@ -134,8 +132,7 @@ int main(int argc, char **argv)
                     /* TODO: Handle tranfer packet */
                     handleTransferPacket(rcvd_packet, from_ip, ss, &send_addr);             
                 } else if (is_transferring != 0 && transfer_queue_head->sender_ip == from_ip){
-                    /* TODO: use function for handling data packet. */
-                    printf("Packet is Data Packet \n");
+                    /* handling data packet. */
                     sequence_number = handleDataPacket(
                                         (DataPacket *) rcvd_packet, bytes,
                                         from_ip, ss, &send_addr, 
@@ -174,36 +171,18 @@ int main(int argc, char **argv)
 
 }
 
-void PromptForHostName( char *my_name, char *host_name, size_t max_len ) {
-
-    char *c;
-
-    gethostname(my_name, max_len );
-    printf("My host name is %s.\n", my_name);
-
-    printf( "\nEnter host to send to:\n" );
-    if ( fgets(host_name,max_len,stdin) == NULL ) {
-        perror("Ucast: read_name");
-        exit(1);
-    }
-    
-    c = strchr(host_name,'\n');
-    if ( c ) *c = '\0';
-    c = strchr(host_name,'\r');
-    if ( c ) *c = '\0';
-
-    printf( "Sending from %s to %s.\n", my_name, host_name );
-
-}
-
 /* Returns possibly updated sequence number  */
 int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                       int ss, struct sockaddr_in *send_addr, 
                       int sequence_number) {
     int number_of_nacks = 0;
+    int write_size = 0;
     /* If the packet has not been set yet, but it in the window */
     if (window[(packet->id) % WINDOW_SIZE] == NULL) {
-       window[(packet->id) % WINDOW_SIZE] = packet;
+        window[(packet->id) % WINDOW_SIZE] = packet;
+        if (packet->type == (char)2) {
+            size_of_last_payload = packet_size - sizeof(PACKET_ID) - sizeof(PACKET_TYPE);
+        }
     }
     /* If the received packet id is the expected id */
     if (packet->id == (char) ((sequence_number + 1) % WINDOW_SIZE)) {
@@ -213,12 +192,17 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
             sequence_number = itr;
             /* TODO: Do we need to check how many bytes fwrite wrote? (it's return val) */
             /* payload size = packet_size - size of ID field - size of type field*/
-            printf("payload: %s\n", window[itr]->payload);
-            if (fw == NULL) {
-                printf("yit it is null\n");
+            if (window[itr]->type == (char) 2) {
+                /* Write the last payload */ 
+                write_size = size_of_last_payload;
+                /* TODO: SET VALUE FOR CLOSING FILE WRITER*/ 
+            } else {
+                write_size = MAX_PACKET_SIZE - sizeof(window[itr]->id) - sizeof(window[itr]->type);
             }
-            fwrite(window[itr]->payload, 1, packet_size - sizeof(window[itr]->id) - sizeof(window[itr]->type), fw);
-            /* TODO: free window[itr]? */
+            fwrite(window[itr]->payload, 1, write_size, fw);
+            if (window[itr]->type == (char) 2) {
+               fclose(fw); 
+            }
             window[itr] = NULL;
             itr++;
             itr %= WINDOW_SIZE;

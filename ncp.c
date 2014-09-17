@@ -28,7 +28,7 @@ int main(int argc, char **argv)
     int                     num;
     char                    mess_buf[MAX_PACKET_SIZE];
     char                    input_buf[80];
-    char                    packet_id;
+    int                     packet_id;
     char                    begun;
     struct timeval          timeout;
     int                     loss_rate;
@@ -39,6 +39,8 @@ int main(int argc, char **argv)
     Packet                  *packet;
     DataPacket              *dPacket;
     int                     packet_size;    
+    char                    end_of_window;
+    char                    at_end_of_window;
 
     /* Need three arguements: loss_rate_percent, source_file_name, and 
        dest_file_name@comp_name */
@@ -192,6 +194,8 @@ int main(int argc, char **argv)
                     if (mess_buf[0] == 0) /* Receiver is ready TODO: cast to packet type */
                     {
                         begun = 1;
+                        end_of_window = (char) (WINDOW_SIZE - 1);
+                        at_end_of_window = 0;
                         printf("Transfer has begun...");
                    }
                     else    /* Receiver is NOT ready */
@@ -223,7 +227,7 @@ int main(int argc, char **argv)
 		        (struct sockaddr *)&send_addr, sizeof(send_addr));
                 printf("Attempting to initiate transfer\n");
             }
-            else /* Transfer has already begun. Send data packet */
+            else if (at_end_of_window == 0)/* Transfer has already begun. Send data packet */
             {
                 /* TODO: Check if nack queue exisits. If so, process & send nack */
                 /* TODO: If haven't reached end of window, and nack queue is 
@@ -244,7 +248,11 @@ int main(int argc, char **argv)
                 else /* If full-size packet, set type = 1 */
                     dPacket->type = (char)1;
 
-                dPacket->id = packet_id;
+                if (packet_id == end_of_window) {
+                    at_end_of_window = 1;
+                }
+
+                dPacket->id = (char) (packet_id % WINDOW_SIZE);
                 packet_id++;
                 
                 /*Is this actually working??? */
@@ -255,6 +263,9 @@ int main(int argc, char **argv)
                 /* TODO: Store packet in array for future use */
                 free(dPacket);
                 dPacket = NULL;
+            } 
+            else {
+               /* We have timed out after hitting the end of the window*/ 
             }
         }
     }
