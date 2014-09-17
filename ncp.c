@@ -4,10 +4,17 @@
 
 /* Constants */
 #define NAME_LENGTH 80
+#define NUM_OF_NACKS_TO_WAIT 8
 
 /* Function prototypes */
 int gethostname(char*,size_t);
-void PromptForHostName( char *my_name, char *host_name, size_t max_len ); 
+void PromptForHostName( char *my_name, char *host_name, size_t max_len );
+
+typedef struct dummy_nack_node {
+    int             nack_count;
+    PACKET_ID       id;
+    dummy_nack_node *next;
+} NackNode;
 
 /* Main TODO: This is way too long, break it into functions */
 int main(int argc, char **argv)
@@ -40,7 +47,9 @@ int main(int argc, char **argv)
     DataPacket              *dPacket;
     int                     packet_size;    
     char                    end_of_window;
+    char                    start_of_window;
     char                    at_end_of_window;
+    NackNode                nack_list_head = NULL;
 
     /* Need three arguements: loss_rate_percent, source_file_name, and 
        dest_file_name@comp_name */
@@ -187,7 +196,6 @@ int main(int argc, char **argv)
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
-                mess_buf[bytes] = 0;
                 
                 if(begun == 0) /* Transfer has not yet begun */
                 {
@@ -195,6 +203,7 @@ int main(int argc, char **argv)
                     {
                         begun = 1;
                         end_of_window = (char) (WINDOW_SIZE - 1);
+                        start_of_window = 0;
                         at_end_of_window = 0;
                         printf("Transfer has begun...");
                    }
@@ -208,6 +217,10 @@ int main(int argc, char **argv)
                 }
                 else    /* Transfer has already begun. Process ack/nacks */
                 {
+                    char ack_id = *(mess_buf[1]);
+                    if (ack_id > start_of_window || ack_id < end_of_window) {
+                        /* free packets up to ack_id, move window*/
+                    }
                     /* TODO: ACK/NACK QUEUE/RESPONSE LOGIC HERE */ 
                 }
             } 
@@ -265,7 +278,8 @@ int main(int argc, char **argv)
                 dPacket = NULL;
             } 
             else {
-               /* We have timed out after hitting the end of the window*/ 
+                /* We have timed out after hitting the end of the window*/
+                /* increment timeout counter. attempt to send nacks if necessary.*/ 
             }
         }
     }
