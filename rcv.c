@@ -58,7 +58,8 @@ int main()
     int                   sequence_number = -1;
     int                   size_of_last_payload;
     FILE *fw = NULL; /* Pointer to dest file, to which we write  */
- 
+
+    sendto_dbg_init(0); 
     sr = socket(AF_INET, SOCK_DGRAM, 0);  /* socket for receiving (udp) */
     if (sr<0) {
         perror("Ucast: socket");
@@ -120,7 +121,7 @@ int main()
                 } else {
                     /* TODO: use function for handling data packet. */
                     handleDataPacket((DataPacket *) rcvd_packet, bytes, fw, from_ip, ss,
-                                     &send_addr, sequence_number, &window);
+                                     &send_addr, sequence_number, window);
                 }
 
                 printf( "Received from (%d.%d.%d.%d): %s\n", 
@@ -233,6 +234,7 @@ int transferNacksToPayload(char *nack_payload_ptr, char rcvd_id, char sequence_i
 }
 
 void handleTransferPacket(Packet *packet, FILE *fw, int ip, int ss, struct sockaddr_in *send_addr) {
+    printf("file name: %s", packet->payload);
     /* If the ip is not in the queue, we want to add it to the tranfer queue */
     if (!isInQueue(ip)) {
         addToQueue(packet, ip);
