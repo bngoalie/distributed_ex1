@@ -136,7 +136,6 @@ int main(int argc, char **argv)
         printf("Malloc failed.\n");
         exit(0);
     }
-    /* TODO: If use enums, then have to consider size in Packet */
     packet->type = (char) 0;
     strcpy(packet->payload, dest_file_name);
 
@@ -213,21 +212,18 @@ int main(int argc, char **argv)
             else /* Transfer has already begun. Send data packet */
             {
                 /* TODO: If haven't reached end of window, and nack queue is 
-                empty or nothing in nack queue should be sent again */ 
+                empty or nothing in nack queue should be sent again (what???) */ 
                 
                 /* Read file into char buffer */
                 bytes = fread (input_buf, 1, PAYLOAD_SIZE, fr);
                 input_buf[bytes] = 0;
                 packet = malloc(sizeof(Packet));
-                
-                if (bytes < PAYLOAD_SIZE)
-                {
-                     /* TODO: If size is less than max, cast to end packet type */
-                }
-                else
-                {
-                    /* TODO: If full-size packet, cast to data packet type */
-                }
+                packet->               
+ 
+                if(feof(fr)) /* If we've reached the EOF, set type = 2 */
+                    packet->type = (char)2;
+                else /* If full-size packet, set type = 1 */
+                    packet->type = (char)1;
                 
                 sendto_dbg( ss, input_buf, strlen(input_buf), 0, 
                 (struct sockaddr *)&send_addr, sizeof(send_addr) );

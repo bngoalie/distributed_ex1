@@ -9,16 +9,20 @@
 #include <netdb.h>
 #include <errno.h>
 
-#define PORT	     10110
-#define WINDOW_SIZE 256
+#define PORT	        10110
+#define WINDOW_SIZE     256
 #define MAX_PACKET_SIZE 1400
+<<<<<<< HEAD
 #define PAYLOAD_SIZE MAX_PACKET_SIZE-2*sizeof(char)
 /* TODO: consider using a #define for type, id, so don't have to use sizeof(char), but instead sizeof(TYPE)
  * so only need to change in header and rest of math would work out. */
 #define PACKET_ID char
 #define PACKET_TYPE char
+=======
+#define PAYLOAD_SIZE    MAX_PACKET_SIZE-2*sizeof(char)
+>>>>>>> 5ed8acaf4751645bf9a941138599bf5812cf160c
 
-/* Struct for generic packet */
+/* Packet: Struct for generic packet */
 typedef struct dummy_packet {
     /* Types for ncp packets: request transfer(0), regular data(1), 
      * final data(2).
@@ -33,8 +37,8 @@ ack & nacks(2). */
     char payload[MAX_PACKET_SIZE- sizeof(char)];    
 } Packet;
 
-/* Struct for send packet */
-typedef struct dummy_packet_2 {
+/* DataPacket: Struct for send packet */
+typedef struct dummy_packet2 {
     /* Types for ncp packets: request transfer, regular data, final data
        Types for rcv packets: ready to transfer, ack & nacks */
     char type;
@@ -47,6 +51,4 @@ typedef struct dummy_packet_2 {
      */
     char payload[MAX_PACKET_SIZE- 2*sizeof(char)];    
 } DataPacket;
-
-/* TODO: Make a struct for end packet */
 
