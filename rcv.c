@@ -120,8 +120,10 @@ int main()
                     handleTransferPacket(rcvd_packet, fw, from_ip, ss, &send_addr);             
                 } else {
                     /* TODO: use function for handling data packet. */
-                    handleDataPacket((DataPacket *) rcvd_packet, bytes, fw, from_ip, ss,
-                                     &send_addr, sequence_number, window);
+                    sequence_number = handleDataPacket(
+                                        (DataPacket *) rcvd_packet, bytes, fw,
+                                        from_ip, ss, &send_addr,
+                                        sequence_number, window);
                 }
 
                 printf( "Received from (%d.%d.%d.%d): %s\n", 
