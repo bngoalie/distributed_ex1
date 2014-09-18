@@ -239,6 +239,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
     send_addr->sin_addr.s_addr = ip; 
      
     /* Ack-nack packet type */
+    /* TODO: what should ack be if haven't received a packet yet?*/
     printf("prepare ack nack packet\n");
     responsePacket->type = (char) 2;
     responsePacket->payload[0] = (char)sequence_number;
@@ -257,8 +258,9 @@ int transferNacksToPayload(char *nack_payload_ptr, char rcvd_id, char sequence_i
            && ((sequence_id < rcvd_id && itr->id < rcvd_id)
                 || (rcvd_id < sequence_id
                     && (rcvd_id > itr->id || itr->id > sequence_id)))) {
+        printf("adding %u to nack payload\n", itr->id);
         memcpy(nack_payload_ptr, &itr->id, sizeof(itr->id)); 
-        itr++;
+        itr = itr->next;
         nack_payload_ptr++;
         number_of_nacks_added++;
     }
