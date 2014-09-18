@@ -30,7 +30,7 @@ Node *transfer_queue_tail = NULL;
 
 typedef struct dummy_nack_node
 {
-    char id;
+    PACKET_ID id;
     struct dummy_nack_node *next;
 } NackNode;
     
@@ -208,11 +208,12 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
             itr %= WINDOW_SIZE;
         }
         /* Update Nack Queue */
-        NackNode nack_itr = nack_queue_head;
-        while (nack_queue_head != NULL && nack_queue_tail != NULL) {
+        NackNode *nack_itr = nack_queue_head;
+        while (nack_queue_head != NULL) {
             if ((nack_queue_tail->id > nack_queue_head->id && nack_queue_head->id < sequence_number)
                 || (nack_queue_tail->id < nack_queue_head->id) 
                     && (nack_queue_head->id < sequence_number || nack_queue_tail->id >= sequence_number)) {
+                printf("removing from nack queue id: %u\n", nack_queue_head->id);
                 nack_itr = nack_queue_head;
                 nack_queue_head = nack_queue_head->next;
                 free(nack_itr);
@@ -222,7 +223,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
         }
         if (nack_queue_head == NULL) {
             nack_queue_tail = NULL;
-        }            
+        } 
     } else {
         /* This is not the next expected packet. It is already, maybe, added to window above. 
          * Now possibly update nack queue. */
