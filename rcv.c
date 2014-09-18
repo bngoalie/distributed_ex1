@@ -207,6 +207,22 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
             itr++;
             itr %= WINDOW_SIZE;
         }
+        /* Update Nack Queue */
+        NackNode nack_itr = nack_queue_head;
+        while (nack_queue_head != NULL && nack_queue_tail != NULL) {
+            if ((nack_queue_tail->id > nack_queue_head->id && nack_queue_head->id < sequence_number)
+                || (nack_queue_tail->id < nack_queue_head->id) 
+                    && (nack_queue_head->id < sequence_number || nack_queue_tail->id >= sequence_number)) {
+                nack_itr = nack_queue_head;
+                nack_queue_head = nack_queue_head->next;
+                free(nack_itr);
+            } else {
+                break;
+            }
+        }
+        if (nack_queue_head == NULL) {
+            nack_queue_tail = NULL;
+        }            
     } else {
         /* This is not the next expected packet. It is already, maybe, added to window above. 
          * Now possibly update nack queue. */
