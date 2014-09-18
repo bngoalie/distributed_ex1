@@ -139,12 +139,11 @@ int main(int argc, char **argv)
                                         sequence_number);
                 }
 
-                printf( "Received from (%d.%d.%d.%d): %s\n", 
+                printf( "Received from (%d.%d.%d.%d)\n", 
 						(htonl(from_ip) & 0xff000000)>>24,
 						(htonl(from_ip) & 0x00ff0000)>>16,
 						(htonl(from_ip) & 0x0000ff00)>>8,
-						(htonl(from_ip) & 0x000000ff),
-						mess_buf );
+						(htonl(from_ip) & 0x000000ff));
 
             }else if( FD_ISSET(0, &temp_mask) ) {
                 bytes = read( 0, input_buf, sizeof(input_buf) );
@@ -175,35 +174,36 @@ int main(int argc, char **argv)
 int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                       int ss, struct sockaddr_in *send_addr, 
                       int sequence_number) {
+    printf("Handling data packet with id: %d\n", (unsigned char) (packet->id));
     int number_of_nacks = 0;
     int write_size = 0;
     /* If the packet has not been set yet, but it in the window */
-    if (window[(packet->id) % WINDOW_SIZE] == NULL) {
-        window[(packet->id) % WINDOW_SIZE] = packet;
+    if (window[(unsigned char) ((packet->id) % WINDOW_SIZE)] == NULL) {
+        window[(unsigned char)((packet->id) % WINDOW_SIZE)] = packet;
         if (packet->type == (char)2) {
             size_of_last_payload = packet_size - sizeof(PACKET_ID) - sizeof(PACKET_TYPE);
         }
     }
     /* If the received packet id is the expected id */
     if (packet->id == (char) ((sequence_number + 1) % WINDOW_SIZE)) {
-        int itr = (packet->id) % WINDOW_SIZE;
+        unsigned char itr = (packet->id) % WINDOW_SIZE;
         /* Write payload to file */
-        while(window[itr] != NULL) {
+        while(window[(unsigned char)itr] != NULL) {
             sequence_number = itr;
             /* TODO: Do we need to check how many bytes fwrite wrote? (it's return val) */
             /* payload size = packet_size - size of ID field - size of type field*/
-            if (window[itr]->type == (char) 2) {
+            if (window[(unsigned int) itr]->type == (char) 2) {
                 /* Write the last payload */ 
                 write_size = size_of_last_payload;
                 /* TODO: SET VALUE FOR CLOSING FILE WRITER*/ 
             } else {
-                write_size = MAX_PACKET_SIZE - sizeof(window[itr]->id) - sizeof(window[itr]->type);
+                write_size = MAX_PACKET_SIZE - sizeof(PACKET_ID) - sizeof(PACKET_TYPE);
             }
             fwrite(window[itr]->payload, 1, write_size, fw);
-            if (window[itr]->type == (char) 2) {
+            if (window[(unsigned int) itr]->type == (char) 2) {
                fclose(fw); 
             }
-            window[itr] = NULL;
+            window[(unsigned int) itr] = NULL;
             itr++;
             itr %= WINDOW_SIZE;
         }
@@ -222,10 +222,11 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
     send_addr->sin_addr.s_addr = ip; 
      
     /* Ack-nack packet type */
+    printf("prepare ack nack packet\n");
     responsePacket->type = (char) 2;
     responsePacket->payload[0] = (char)sequence_number;
     number_of_nacks = transferNacksToPayload(&((responsePacket->payload)[1]), packet->id, (char)sequence_number); 
-    sendto_dbg(ss, (char *)packet, sizeof(packet->id) + (number_of_nacks + 1) * sizeof(PACKET_ID), 0,
+    sendto_dbg(ss, (char *)responsePacket, sizeof(PACKET_TYPE) + sizeof(PACKET_ID) + (number_of_nacks + 1) * sizeof(PACKET_ID), 0,
             (struct sockaddr *)send_addr, sizeof(*send_addr));
 
     /* Return new sequence number */
@@ -248,7 +249,7 @@ int transferNacksToPayload(char *nack_payload_ptr, char rcvd_id, char sequence_i
 }
 
 void handleTransferPacket(Packet *packet, int ip, int ss, struct sockaddr_in *send_addr) {
-    printf("file name: %s", packet->payload);
+    printf("file name: %s\n", packet->payload);
     /* If the ip is not in the queue, we want to add it to the tranfer queue */
     if (!isInQueue(ip)) {
         addToQueue(packet, ip);
