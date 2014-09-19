@@ -33,7 +33,6 @@ int main(int argc, char **argv)
     int                     bytes;
     int                     num;
     char                    mess_buf[MAX_PACKET_SIZE];
-    char                    input_buf[80];
     PACKET_ID               packet_id;
     char                    begun;
     struct timeval          timeout;
