@@ -49,9 +49,9 @@ int main(int argc, char **argv)
     AckNackPacket           *ack_nack_packet;
     int                     packet_size;    
     char                    end_of_window;
-    char                    start_of_window;
+    PACKET_ID                    start_of_window;
     char                    at_end_of_window;
-    NackNode                *nack_list_head = NULL;
+    NackNode                nack_list_head;
     DataPacket              *window[WINDOW_SIZE];
     int                     size_of_last_packet = 0;
     int                     timeout_counter;
@@ -177,6 +177,8 @@ int main(int argc, char **argv)
     for (i = 0; i < WINDOW_SIZE; i++) {
         window[i] = NULL;
     }
+    
+    nack_list_head.next = NULL;
 
     /* Indefinite I/O multiplexing loop */
     int eof = 1;
@@ -207,7 +209,12 @@ int main(int argc, char **argv)
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
-                rcvd_packet = (Packet *)mess_buf;
+                rcvd_packet = malloc(sizeof(Packet));
+                if (!rcvd_packet) {
+                    printf("Malloc failed for new tranfer queue node.\n");
+                    exit(0);
+                }
+                memcpy((char *)rcvd_packet, mess_buf, bytes);
                 from_len = sizeof(from_addr);
                 if(begun == 0) /* Transfer has not yet begun */
                 {
@@ -236,31 +243,78 @@ int main(int argc, char **argv)
                     if (ack_id >= start_of_window) {
                         /* free packets up to ack_id, move window*/
                         for (;start_of_window < ack_id + 1;start_of_window++) {
+                            if (window[start_of_window % WINDOW_SIZE] == NULL) 
+                                printf("null\n");
+                            printf("before for ack_id %d\n",ack_id);
                             free(window[start_of_window % WINDOW_SIZE]);
+                            printf("after\n");
                             window[start_of_window % WINDOW_SIZE] = NULL;
                         }
                         start_of_window++;
                     }
-                    /* TODO: ACK/NACK QUEUE/RESPONSE LOGIC HERE */
-                    if ((bytes - sizeof(PACKET_TYPE) - sizeof(PACKET_ID)) 
-                        >= sizeof(PACKET_ID)) {
+                    /* ACK/NACK QUEUE/RESPONSE LOGIC HERE */
+                    if (((bytes - sizeof(PACKET_TYPE) - sizeof(PACKET_ID)) 
+                        >= sizeof(PACKET_ID)) && ack_id >= start_of_window-1) {
                         /* If there is at least one nack in the packet*/
-                        response_packet = window[ack_nack_packet->nacks[0]];
+                        
+                        /* send response packet for first nack */
+                        response_packet = 
+                            (Packet *)window[ack_nack_packet->nacks[0]];
                         packet_size = MAX_PACKET_SIZE;
                         if (response_packet->type == (PACKET_TYPE)2) {
                             packet_size = size_of_last_packet;
                         }
                         sendto_dbg( ss, (char *)response_packet, packet_size, 0,
                             (struct sockaddr *)&send_addr, sizeof(send_addr) );
+                        NackNode *nack_list_itr = &nack_list_head;
+                        NackNode *tmp;
+                        while (nack_list_itr->next != NULL 
+                            && nack_list_itr->next->id 
+                                < ack_nack_packet->nacks[0]) {
+                            nack_list_itr = nack_list_itr->next;
+                        }
+                        if (nack_list_itr->next != NULL 
+                            && nack_list_itr->next->id 
+                                == ack_nack_packet->nacks[0]) {
+                            tmp = nack_list_itr->next;
+                            nack_list_itr->next = tmp->next;
+                            free(tmp);
+                        }
+                        
+                        /* Merge nacks into nack queue. */
+                        nack_list_itr = &nack_list_head;
+                        int idx;
+                        for (idx = 1; idx < (bytes - sizeof(PACKET_TYPE) - 
+                             2*sizeof(PACKET_ID))/sizeof(PACKET_ID);) {
+                            if (nack_list_itr->next != NULL 
+                                && nack_list_itr->next->id  
+                                    == ack_nack_packet->nacks[idx]) {
+                                idx++;
+                            } else if (nack_list_itr->next == NULL 
+                                || nack_list_itr->next->id 
+                                    > ack_nack_packet->nacks[idx]) {
+                                tmp = malloc(sizeof(NackNode));
+                                if (!tmp) {
+                                    perror("Malloc failed.\n");
+                                    exit(0);
+                                }
+                                tmp->next = nack_list_itr->next;
+                                tmp->id = ack_nack_packet->nacks[idx];
+                                nack_list_itr->next = tmp;
+                                idx++;
+                            }
+                            nack_list_itr = nack_list_itr->next;
+                        }
                     }
                 }
+                free(rcvd_packet);
             } 
             else    /* Something else triggered select (shouldn't happen) */
             {
                 perror("ncp: invalid select option");
                 exit(1);    
             }
-	    } 
+	} 
         else 
         {
             printf("timeout\n");
@@ -270,19 +324,18 @@ int main(int argc, char **argv)
                 sendto_dbg(ss, (char *)packet, packet_size, 0,
 		        (struct sockaddr *)&send_addr, sizeof(send_addr));
                 printf("Attempting to initiate transfer\n");
-            } else if (nack_list_head != NULL) {
-                dPacket = window[nack_list_head->id % WINDOW_SIZE];
+            } else if (nack_list_head.next != NULL) {
+                dPacket = window[nack_list_head.next->id % WINDOW_SIZE];
                 
                 packet_size = MAX_PACKET_SIZE;
                 if (dPacket->type == (PACKET_ID) 2) {
                     packet_size = size_of_last_packet;
                 }
                 sendto_dbg( ss, (char *)dPacket, packet_size, 0,
-                (struct sockaddr *)&send_addr, sizeof(send_addr));
-                packet = nack_list_head;
-                nack_list_head = nack_list_head->next;
-                free(packet);
-                packet = NULL;
+                    (struct sockaddr *)&send_addr, sizeof(send_addr));
+                NackNode *tmp_nack_node = nack_list_head.next;
+                nack_list_head.next = nack_list_head.next->next;
+                free(tmp_nack_node);
             }
             else if (packet_id < start_of_window + WINDOW_SIZE) {
                 /* Transfer has already begun. Not at end of window. Send data 

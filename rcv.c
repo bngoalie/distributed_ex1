@@ -111,7 +111,7 @@ int main(int argc, char **argv)
             timeout.tv_usec = 0;
         } else {
             timeout.tv_sec = 0;
-            timeout.tv_usec = 500;
+            timeout.tv_usec = 10000;
         }
         num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
         if (num > 0) {
@@ -153,7 +153,7 @@ int main(int argc, char **argv)
                 timeout_counter = 0;
             }
             if (is_transferring && ++timeout_counter >= 100) {
-            
+               /* TODO: send ack/nack packet */
             }
             printf(".");
             fflush(0);
@@ -294,12 +294,12 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
      
     /* Ack-nack packet type */
     /* TODO: what should ack be if haven't received a packet yet?*/
-    printf("prepare ack nack packet\n");
     responsePacket->type = (PACKET_TYPE) 2;
     responsePacket->ack_id = (PACKET_ID)sequence_number;
     number_of_nacks = transferNacksToPayload(&(responsePacket->nacks[0]), 
-                          packet->id, sequence_number); 
-    sendto_dbg(ss, (char *)responsePacket, sizeof(PACKET_TYPE)
+                          packet->id, sequence_number);
+    printf("sending ack %d, nacks packet\n", responsePacket->ack_id);
+    sendto_dbg(ss, (char *)responsePacket, (PACKET_TYPE)
                + sizeof(PACKET_ID) + number_of_nacks*sizeof(PACKET_ID), 0,
                (struct sockaddr *)send_addr, sizeof(*send_addr));
 
