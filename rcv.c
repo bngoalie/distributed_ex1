@@ -194,7 +194,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                 write_size = PAYLOAD_SIZE;
             }
             fwrite(window[itr % WINDOW_SIZE]->payload, 1, write_size, fw);
-            if (window[itr % WINDOW_SIZE]->type == (PACKET_ID) 2) {
+            if (window[itr % WINDOW_SIZE]->type == (PACKET_TYPE) 2) {
                fclose(fw); 
             }
             window[itr % WINDOW_SIZE] = NULL;

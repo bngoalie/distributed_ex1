@@ -190,7 +190,7 @@ int main(int argc, char **argv)
 	    timeout.tv_usec = 0;
         } else {
            timeout.tv_sec = 0;
-           timeout.tv_usec= 500; /* Send packet every 0.5ms */
+           timeout.tv_usec= 5000; /* Send packet every 0.5ms */
         }
 
 
@@ -218,7 +218,9 @@ int main(int argc, char **argv)
                 from_len = sizeof(from_addr);
                 if(begun == 0) /* Transfer has not yet begun */
                 {
-                    if (rcvd_packet->type == (PACKET_ID)0) /* Receiver is ready TODO: cast to packet type */
+                    printf("entered begun if\n");
+                    if (rcvd_packet->type == (PACKET_TYPE)0) /* Receiver is 
+ready TODO: cast to packet type */
                     {
                         if (packet != NULL) {
                             free(packet);
@@ -234,10 +236,12 @@ int main(int argc, char **argv)
                         printf("The receiver is currently busy handling another transfer.");
                         timeout.tv_sec = 5;
                     }
-                } else if (rcvd_packet->type == (PACKET_ID)2) {
+                } else if (rcvd_packet->type == (PACKET_TYPE)2) {
                     /* Transfer has already begun. Received ack/nack packet */
                     ack_nack_packet = (AckNackPacket *)rcvd_packet;
                     PACKET_ID ack_id = ack_nack_packet->ack_id;
+                    printf("ack_id %d\n",ack_id);
+
                     /* If the cummuluative ack is in the window. we remove 
                      * packets from the sender's window and shift the window*/
                     if (ack_id >= start_of_window) {
@@ -328,7 +332,7 @@ int main(int argc, char **argv)
                 dPacket = window[nack_list_head.next->id % WINDOW_SIZE];
                 
                 packet_size = MAX_PACKET_SIZE;
-                if (dPacket->type == (PACKET_ID) 2) {
+                if (dPacket->type == (PACKET_TYPE) 2) {
                     packet_size = size_of_last_packet;
                 }
                 sendto_dbg( ss, (char *)dPacket, packet_size, 0,
