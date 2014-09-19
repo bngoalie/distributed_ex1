@@ -12,9 +12,10 @@
 #define PORT	        10110
 #define WINDOW_SIZE     256
 #define MAX_PACKET_SIZE 1400
-#define PACKET_ID char
+#define PACKET_ID int
 #define PACKET_TYPE char
-#define PAYLOAD_SIZE    MAX_PACKET_SIZE-2*sizeof(char)
+#define PAYLOAD_SIZE    MAX_PACKET_SIZE-sizeof(PACKET_TYPE)-sizeof(PACKET_ID)
+#define NACK_WAIT_COUNT 20
 
 /* Packet: Struct for generic packet */
 typedef struct dummy_packet {
@@ -22,27 +23,33 @@ typedef struct dummy_packet {
      * final data(2).
      * Types for rcv packets: ready to transfer(0), not ready for transfer (1), 
 ack & nacks(2). */
-    char type;
+    PACKET_TYPE type;
     /* ncp payloads: for transfer request, just the name of the file. 
      *               for all other types: bytes for the file
      * rcv payloads: for ready to transfer packets, there is no need for a payload.
      *               for acks & nacks packets, the first byte will be the cumulative ack, and the remaining bytes will be nacks
      */
-    char payload[MAX_PACKET_SIZE- sizeof(char)];    
+    char payload[MAX_PACKET_SIZE- sizeof(PACKET_TYPE)];    
 } Packet;
 
 /* DataPacket: Struct for send packet */
 typedef struct dummy_packet2 {
     /* Types for ncp packets: request transfer, regular data, final data
        Types for rcv packets: ready to transfer, ack & nacks */
-    char type;
+    PACKET_TYPE type;
     /* ID for sending packet is a number from 0-255 inclusive */
-    char id;
+    PACKET_ID id;
     /* ncp payloads: for transfer request, just the name of the file. 
      *               for all other types: bytes for the file
      * rcv payloads: for ready to transfer packets, there is no need for a payload.
      *               for acks & nacks packets, the first byte will be the cumulative ack, and the remaining bytes will be nacks
      */
-    char payload[MAX_PACKET_SIZE- 2*sizeof(char)];    
+    char payload[MAX_PACKET_SIZE- sizeof(PACKET_ID) - sizeof(PACKET_TYPE)];    
 } DataPacket;
+
+typedef struct dummy_ack_packet {
+    PACKET_TYPE type;
+    PACKET_ID ack_id;
+    PACKET_ID nacks[MAX_PACKET_SIZE- sizeof(PACKET_ID) - sizeof(PACKET_TYPE)];
+} AckNackPacket;
 
