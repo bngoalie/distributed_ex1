@@ -1,6 +1,6 @@
 CC=gcc
 
-CFLAGS = -ansi -c -Wall -pedantic
+CFLAGS = -ansi -c -Wall -pedantic -g
 
 all: ncp rcv t_ncp t_rcv
 

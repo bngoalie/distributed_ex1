@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
 	int	ret;
 	int	nread;
 	int	mess_len;
-	char	mess_buf[MAX_MESS_LEN];
+	char	mess_buf[MAX_PACKET_SIZE];
 	char	*neto_mess_ptr = &mess_buf[sizeof(mess_len)];
 
 	/* Open file source and get destination from arguments: */
@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
 	/* Send file: */
 	for (;;)
 	{
-		nread = fread(mess_buf, 1, MAX_MESS_LEN, file_src);
+		nread = fread(mess_buf, 1, MAX_PACKET_SIZE, file_src);
 		if (nread > 0)
 			/* SEND PACKET */
 			printf("SEND PACKET HERE\n");
@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
 				perror("t_ncp: error in writing chunk");
 				exit(0);
 			}
-		else if (nread < MAX_MESS_LEN)
+		else if (nread < MAX_PACKET_SIZE)
 		{
 			if (feof(file_src))
 			{ 

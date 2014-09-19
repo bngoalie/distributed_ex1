@@ -11,7 +11,7 @@ int main()
 	int	i,j,num;
 	int	mess_len;
 	int 	neto_len;
-	char	mess_buf[MAX_MESS_LEN];
+	char	mess_buf[MAX_PACKET_SIZE];
 	long	on=1;
 
 	/* Create TCP socket: */

@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     DataPacket              *window[WINDOW_SIZE];
     int                     size_of_last_packet = 0;
     int                     timeout_counter;
-
+    PACKET_ID               ack_id;
     /* Need three arguements: loss_rate_percent, source_file_name, and 
        dest_file_name@comp_name */
     if(argc != 4) {
@@ -205,17 +205,18 @@ int main(int argc, char **argv)
             {
                 printf("RECEIVED A PACKET\n");
                 /* Get data from ethernet interface */
-
+                from_len = sizeof(from_addr);
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
+                printf("size of packet is %d bytes\n", bytes);
                 rcvd_packet = malloc(sizeof(Packet));
                 if (!rcvd_packet) {
                     printf("Malloc failed for new tranfer queue node.\n");
                     exit(0);
                 }
                 memcpy((char *)rcvd_packet, mess_buf, bytes);
-                from_len = sizeof(from_addr);
+
                 if(begun == 0) /* Transfer has not yet begun */
                 {
                     printf("entered begun if\n");
@@ -239,8 +240,16 @@ ready TODO: cast to packet type */
                 } else if (rcvd_packet->type == (PACKET_TYPE)2) {
                     /* Transfer has already begun. Received ack/nack packet */
                     ack_nack_packet = (AckNackPacket *)rcvd_packet;
-                    PACKET_ID ack_id = ack_nack_packet->ack_id;
+                    ack_id = ack_nack_packet->ack_id;
                     printf("ack_id %d\n",ack_id);
+                    
+                    int nackIdx;
+                    for (nackIdx = 0; nackIdx < (bytes - sizeof(PACKET_TYPE) - 
+                            sizeof(PACKET_ID))/sizeof(PACKET_ID); nackIdx++) {
+                        printf("packet has nack id %d,", 
+                                ack_nack_packet->nacks[nackIdx]); 
+                    }
+                    printf("\n");
 
                     /* If the cummuluative ack is in the window. we remove 
                      * packets from the sender's window and shift the window*/
@@ -249,21 +258,26 @@ ready TODO: cast to packet type */
                         for (;start_of_window < ack_id + 1;start_of_window++) {
                             if (window[start_of_window % WINDOW_SIZE] == NULL) 
                                 printf("null\n");
-                            printf("before for ack_id %d\n",ack_id);
                             free(window[start_of_window % WINDOW_SIZE]);
-                            printf("after\n");
                             window[start_of_window % WINDOW_SIZE] = NULL;
                         }
-                        start_of_window++;
+                        /*start_of_window++;*/
                     }
                     /* ACK/NACK QUEUE/RESPONSE LOGIC HERE */
                     if (((bytes - sizeof(PACKET_TYPE) - sizeof(PACKET_ID)) 
                         >= sizeof(PACKET_ID)) && ack_id >= start_of_window-1) {
+                        NackNode *nackNodeItr = &nack_list_head;
+                        while (nackNodeItr->next != NULL) {
+                            printf("nack queueue has %d\n", 
+nackNodeItr->next->id);
+                            nackNodeItr = nackNodeItr->next;
+                        }
                         /* If there is at least one nack in the packet*/
                         
                         /* send response packet for first nack */
                         response_packet = 
-                            (Packet *)window[ack_nack_packet->nacks[0]];
+                            (Packet *)window[(ack_nack_packet->nacks[0]) % 
+                                             WINDOW_SIZE];
                         packet_size = MAX_PACKET_SIZE;
                         if (response_packet->type == (PACKET_TYPE)2) {
                             packet_size = size_of_last_packet;
@@ -321,6 +335,11 @@ ready TODO: cast to packet type */
 	} 
         else 
         {
+            NackNode *nackNodeItr = &nack_list_head;
+            while (nackNodeItr->next != NULL) {
+                printf("nack queueue has %d\n", nackNodeItr->next->id);
+                nackNodeItr = nackNodeItr->next;
+            }
             printf("timeout\n");
             /* Select has timed out. Send a packet. */
             if (begun == 0) /* Transfer has not yet begun. Send transfer packet */
@@ -329,6 +348,8 @@ ready TODO: cast to packet type */
 		        (struct sockaddr *)&send_addr, sizeof(send_addr));
                 printf("Attempting to initiate transfer\n");
             } else if (nack_list_head.next != NULL) {
+                printf("first node in nack list: %d\n", 
+nack_list_head.next->id);
                 dPacket = window[nack_list_head.next->id % WINDOW_SIZE];
                 
                 packet_size = MAX_PACKET_SIZE;

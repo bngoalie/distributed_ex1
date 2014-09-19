@@ -220,15 +220,17 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
              * queue. need to add nacks for all id's from tail to packet id */
             int idx;
             for (idx = nack_queue_tail->id + 1; idx < packet->id; idx++) {
-                nack_queue_tail->next = malloc(sizeof(NackNode));
-                if(nack_queue_tail->next == NULL) {                
-                    printf("Malloc failed for NackNode.\n");
-                    exit(0);
+                if (window[idx % WINDOW_SIZE] == NULL) {   
+                    nack_queue_tail->next = malloc(sizeof(NackNode));
+                    if(nack_queue_tail->next == NULL) {                
+                        printf("Malloc failed for NackNode.\n");
+                        exit(0);
+                    }
+                    nack_queue_tail->next->id = idx;
+                    nack_queue_tail->next->count = 0;
+                    nack_queue_tail = nack_queue_tail->next;
+                    nack_queue_tail->next = NULL;
                 }
-                nack_queue_tail->next->id = idx;
-                nack_queue_tail->next->count = 0;
-                nack_queue_tail = nack_queue_tail->next;
-                nack_queue_tail->next = NULL;
             }
         } else if (nack_queue_head == NULL) {
             /* The nack queue is empty. Add nacks for elements from 
@@ -279,6 +281,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                         free(tmp);
                         break;
                     }
+                    itr = itr->next;
                 }
             }
         }
@@ -295,11 +298,11 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
     /* Ack-nack packet type */
     /* TODO: what should ack be if haven't received a packet yet?*/
     responsePacket->type = (PACKET_TYPE) 2;
-    responsePacket->ack_id = (PACKET_ID)sequence_number;
+    responsePacket->ack_id = sequence_number;
     number_of_nacks = transferNacksToPayload(&(responsePacket->nacks[0]), 
                           packet->id, sequence_number);
     printf("sending ack %d, nacks packet\n", responsePacket->ack_id);
-    sendto_dbg(ss, (char *)responsePacket, (PACKET_TYPE)
+    sendto_dbg(ss, (char *)responsePacket, sizeof(PACKET_TYPE)
                + sizeof(PACKET_ID) + number_of_nacks*sizeof(PACKET_ID), 0,
                (struct sockaddr *)send_addr, sizeof(*send_addr));
 
@@ -314,11 +317,11 @@ int transferNacksToPayload(PACKET_ID *nack_payload_ptr, PACKET_ID rcvd_id,
     while (itr != NULL && itr->id < rcvd_id) {
         if (itr->count % NACK_WAIT_COUNT == 0) {
             printf("adding %u to nack payload\n", itr->id);
-            (itr->count)++;
             memcpy(nack_payload_ptr, &itr->id, sizeof(PACKET_ID)); 
             nack_payload_ptr++;
             number_of_nacks_added++;
         }
+        (itr->count)++;
         itr = itr->next;
     }
     return number_of_nacks_added;

@@ -13,12 +13,12 @@
 #define WINDOW_SIZE     256
 #define MAX_PACKET_SIZE 1400
 #define PACKET_ID int
-#define PACKET_TYPE char
+#define PACKET_TYPE int
 #define PAYLOAD_SIZE    MAX_PACKET_SIZE-sizeof(PACKET_TYPE)-sizeof(PACKET_ID)
 #define NACK_WAIT_COUNT 20
 
 /* Packet: Struct for generic packet */
-typedef struct dummy_packet {
+typedef struct {
     /* Types for ncp packets: request transfer(0), regular data(1), 
      * final data(2).
      * Types for rcv packets: ready to transfer(0), not ready for transfer (1), 
@@ -33,7 +33,7 @@ ack & nacks(2). */
 } Packet;
 
 /* DataPacket: Struct for send packet */
-typedef struct dummy_packet2 {
+typedef struct {
     /* Types for ncp packets: request transfer, regular data, final data
        Types for rcv packets: ready to transfer, ack & nacks */
     PACKET_TYPE type;
@@ -47,7 +47,7 @@ typedef struct dummy_packet2 {
     char payload[MAX_PACKET_SIZE- sizeof(PACKET_ID) - sizeof(PACKET_TYPE)];    
 } DataPacket;
 
-typedef struct dummy_ack_packet {
+typedef struct {
     PACKET_TYPE type;
     PACKET_ID ack_id;
     PACKET_ID nacks[MAX_PACKET_SIZE- sizeof(PACKET_ID) - sizeof(PACKET_TYPE)];
