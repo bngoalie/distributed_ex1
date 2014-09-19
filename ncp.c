@@ -33,6 +33,7 @@ int main(int argc, char **argv)
     int                     bytes;
     int                     num;
     char                    mess_buf[MAX_PACKET_SIZE];
+    char                    input_buf[PAYLOAD_SIZE];
     PACKET_ID               packet_id;
     char                    begun;
     struct timeval          timeout;
@@ -189,7 +190,7 @@ int main(int argc, char **argv)
 	    timeout.tv_usec = 0;
         } else {
            timeout.tv_sec = 0;
-           timeout.tv_usec= 5000; /* Send packet every 0.5ms */
+           timeout.tv_usec= 1000; /* Send packet every 0.5ms */
         }
 
 
@@ -367,7 +368,7 @@ ready TODO: cast to packet type */
                 }
                 dPacket->id = packet_id;
                 
-                memcpy(&(dPacket->payload), input_buf, bytes);
+                memcpy(dPacket->payload, input_buf, bytes);
                 printf("sending data packet\n");
                 sendto_dbg( ss, (char *)dPacket, packet_size, 0,
                     (struct sockaddr *)&send_addr, sizeof(send_addr) );
