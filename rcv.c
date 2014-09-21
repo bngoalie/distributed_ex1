@@ -122,7 +122,6 @@ int main(int argc, char **argv)
         num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
         if (num > 0) {
             if ( FD_ISSET( sr, &temp_mask) ) {
-                printf("sequence num: %d\n", sequence_number);
                 timeout_counter = 0;
                 /* get data from ethernet interface*/
                 from_len = sizeof(from_addr);
@@ -170,10 +169,14 @@ int main(int argc, char **argv)
                     /* Ack-nack packet type */
                     ackNackresponsePacket->type = (PACKET_TYPE) 2;
                     ackNackresponsePacket->ack_id = sequence_number;
-                    number_of_nacks = transferNacksToPayload(
+                    number_of_nacks = 0;
+                    if (fw != NULL) {
+                        number_of_nacks = transferNacksToPayload(
                                         &(ackNackresponsePacket->nacks[0]),
                                         nack_queue_tail->id + 1, 
                                         sequence_number);
+                    }
+                    
                    /* printf("sending ack %d,nacks packet\n", 
                         responsePacket->ack_id);*/
                     sendto_dbg(ss, (char *)ackNackresponsePacket, 
@@ -203,7 +206,6 @@ int main(int argc, char **argv)
 int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                       int ss, struct sockaddr_in *send_addr, 
                       PACKET_ID sequence_number) {
-    printf("handleDataPacket: sequence_number %d\n", sequence_number);
     printf("Handling data packet with id: %d\n", packet->id);
     int number_of_nacks = 0;
     int write_size = 0;
@@ -228,9 +230,8 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
         /* Write payload to file */
         while(window[itr % WINDOW_SIZE].id != -1) {
             sequence_number = itr;
-            printf("iterating with itr %d\n", itr);
-            printf("the data packet has id %d\n", window[itr%WINDOW_SIZE].id);
-            /* TODO: Do we need to check how many bytes fwrite wrote? (it's return val) */
+            /* TODO: Do we need to check how many bytes fwrite wrote? (it's 
+return val) */
             /* payload size = packet_size - size of ID field - size of type field*/
             if (window[itr % WINDOW_SIZE].type == (PACKET_TYPE) 2) {
                 /* Write the last payload */ 
@@ -286,14 +287,11 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
             nack_queue_tail = NULL;
         } 
     } else {
-        printf("packet id %d was not expected id %d\n", packet->id, 
-            sequence_number+1);
         /* This is not the next expected packet. It is already, maybe, added to window above. 
          * Now possibly update nack queue. */
         if (nack_queue_tail != NULL && nack_queue_tail->id < packet->id) {
             /*The received packet's id is after the id of the tail of nack 
              * queue. need to add nacks for all id's from tail to packet id */
-            printf("line 289, tail id: %d\n", nack_queue_tail->id);
             int idx;
             for (idx = nack_queue_tail->id + 1; idx < packet->id; idx++) {
                 if (window[idx % WINDOW_SIZE].id == -1) {   
@@ -335,7 +333,6 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                 nack_queue_tail->next = NULL;
             }
         } else if (packet->id >= nack_queue_head->id) {
-            printf("line 331, head id: %d\n", nack_queue_head->id);
             NackNode *tmp;
             if ( nack_queue_head->id == packet->id ) {
                 if (nack_queue_head == nack_queue_tail) {
@@ -373,7 +370,6 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
     /* TODO: what should ack be if haven't received a packet yet?*/
     ackNackresponsePacket->type = (PACKET_TYPE) 2;
     ackNackresponsePacket->ack_id = sequence_number;
-    printf("line 372, packet id: %d\n", packet->id);
     number_of_nacks = transferNacksToPayload(ackNackresponsePacket->nacks, 
                           packet->id, sequence_number);
     /*printf("sending ack %d, nacks packet\n", responsePacket->ack_id);*/
@@ -387,7 +383,6 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
 
 int transferNacksToPayload(PACKET_ID *nack_payload_ptr, PACKET_ID rcvd_id, 
                            PACKET_ID sequence_id) {
-    printf("rcvd_id: %d. seq_id: %d\n", rcvd_id, sequence_id);
     int number_of_nacks_added = 0;
     NackNode *itr = nack_queue_head;
     while (itr != NULL && itr->id < rcvd_id) {

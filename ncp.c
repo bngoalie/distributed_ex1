@@ -406,10 +406,14 @@ another transfer.");
                     eof = 1;
                     if (read_last_packet == 0) {
                         fclose(fr);
+                        fr = NULL;
                     }
                 }
             }
         }
+    }
+    if (fr != NULL) {
+        fclose(fr);
     }
     return 0;
 }
