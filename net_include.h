@@ -10,7 +10,7 @@
 #include <errno.h>
 
 #define PORT	        10110
-#define WINDOW_SIZE     256
+#define WINDOW_SIZE     1024
 #define MAX_PACKET_SIZE 1400
 #define PACKET_ID int
 #define PACKET_TYPE int
