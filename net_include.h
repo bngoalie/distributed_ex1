@@ -17,6 +17,7 @@
 #define PACKET_TYPE int
 #define PAYLOAD_SIZE    MAX_PACKET_SIZE-sizeof(PACKET_TYPE)-sizeof(PACKET_ID)
 #define NACK_WAIT_COUNT 20
+#define BURST_MAX       20
 
 /* Packet: Struct for generic packet */
 typedef struct {
