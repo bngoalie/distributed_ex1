@@ -74,8 +74,8 @@ int main(int argc, char *argv[])
             /* Close if EOF */
             if (feof(file_src))
                 done = 1;
-		} else { /* Else 0 bytes read (file divides into packet sizei) */
-            send(s, file_buf, 0, 0);    /* Send empty closing packet*/
+		} else { /* Else 0 bytes read (file divides into packet size) */
+            send(s, file_buf, 0, 0);    /* Send empty closing packet */
             done = 1;
 		}
 	}
