@@ -41,6 +41,11 @@ DataPacket            *window[WINDOW_SIZE];
 char                  is_transferring = 0;     
 FILE *fw = NULL;
 int                   size_of_last_payload;
+int                   current_ncp_id;
+struct timeval        start_time_1;
+struct timeval        start_time_2;
+struct timeval        end_time_1;
+struct timeval        end_time_2;
 
 int main(int argc, char **argv)
 {
@@ -55,12 +60,12 @@ int main(int argc, char **argv)
     int                   bytes;
     int                   num;
     char                  mess_buf[MAX_PACKET_SIZE];
-    char                  input_buf[80];
     struct timeval        timeout;
     Packet                *rcvd_packet;
     PACKET_ID             sequence_number = -1;
     int                   loss_rate;
     int                   timeout_counter = 0;
+
 
     /* Need one arguements: loss_rate_percent */
     if(argc != 2) {
@@ -107,15 +112,17 @@ int main(int argc, char **argv)
     {
         temp_mask = mask;
         if (is_transferring == 0) {
-            timeout.tv_sec = 10;
+            timeout.tv_sec = 1;
             timeout.tv_usec = 0;
         } else {
             timeout.tv_sec = 0;
-            timeout.tv_usec = 10000;
+            timeout.tv_usec = 500;
         }
         num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
         if (num > 0) {
             if ( FD_ISSET( sr, &temp_mask) ) {
+                printf("sequence num: %d\n", sequence_number);
+                timeout_counter = 0;
                 /* get data from ethernet interface*/
                 from_len = sizeof(from_addr);
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
@@ -130,6 +137,7 @@ int main(int argc, char **argv)
                 }
                 memcpy((char *)rcvd_packet, mess_buf, bytes);
                 if (rcvd_packet->type == (PACKET_TYPE) 0) {
+                    gettimeofday(&start_time_1, 0);
                     /* TODO: Handle tranfer packet */
                     handleTransferPacket(rcvd_packet, from_ip, ss, &send_addr);             
                 } else if (is_transferring != 0 && transfer_queue_head->sender_ip == from_ip){
@@ -140,22 +148,57 @@ int main(int argc, char **argv)
                                         sequence_number);
                 }
 
-                printf( "Received from (%d.%d.%d.%d)\n", 
+               /* printf( "Received from (%d.%d.%d.%d)\n", 
 						(htonl(from_ip) & 0xff000000)>>24,
 						(htonl(from_ip) & 0x00ff0000)>>16,
 						(htonl(from_ip) & 0x0000ff00)>>8,
-						(htonl(from_ip) & 0x000000ff));
+						(htonl(from_ip) & 0x000000ff)); 
+                */
 
             }
 	} else {
             if (is_transferring == 0 && transfer_queue_head != NULL) {
                 initiateTransfer(transfer_queue_head->name, transfer_queue_head->sender_ip, ss, &send_addr);
                 timeout_counter = 0;
+            } else if (is_transferring && ++timeout_counter <= 100) {
+                /* TODO: Make macro for timeout_counter limit.*/
+                if (nack_queue_tail != NULL) {
+                    int number_of_nacks = 0;
+                    /* Send ack-nack packet*/
+                    AckNackPacket *responsePacket = 
+                        malloc(sizeof(AckNackPacket));
+                    if (!responsePacket) {
+                        printf("Malloc failed for ack-nack Packet.\n");
+                        exit(0);
+                    }
+                    /*IP address of host to send to.*/
+                    send_addr.sin_addr.s_addr = current_ncp_id; 
+                    
+                    /* Ack-nack packet type */
+                    responsePacket->type = (PACKET_TYPE) 2;
+                    responsePacket->ack_id = sequence_number;
+                    number_of_nacks = 
+                        transferNacksToPayload(&(responsePacket->nacks[0]), 
+                                        nack_queue_tail->id + 1, 
+                                        sequence_number);
+                   /* printf("sending ack %d,nacks packet\n", 
+                        responsePacket->ack_id);*/
+                    sendto_dbg(ss, (char *)responsePacket, sizeof(PACKET_TYPE)
+                               + sizeof(PACKET_ID) 
+                               + number_of_nacks*sizeof(PACKET_ID), 0, 
+                               (struct sockaddr*)(&send_addr), 
+                               sizeof(send_addr));
+                }
+            } else if (is_transferring && timeout_counter > 1000) {
+                if (fw != NULL) {
+                  fclose(fw); 
+                  fw  = NULL;
+                }                
+                Node *free_node = transfer_queue_head;
+                transfer_queue_head = transfer_queue_head->next;
+                free(free_node);
+                is_transferring = 0;
             }
-            if (is_transferring && ++timeout_counter >= 100) {
-               /* TODO: send ack/nack packet */
-            }
-            printf(".");
             fflush(0);
         }
     }
@@ -168,6 +211,7 @@ int main(int argc, char **argv)
 int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                       int ss, struct sockaddr_in *send_addr, 
                       PACKET_ID sequence_number) {
+    printf("handleDataPacket: sequence_number %d\n", sequence_number);
     printf("Handling data packet with id: %d\n", packet->id);
     int number_of_nacks = 0;
     int write_size = 0;
@@ -189,14 +233,34 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
             if (window[itr % WINDOW_SIZE]->type == (PACKET_TYPE) 2) {
                 /* Write the last payload */ 
                 write_size = size_of_last_payload;
-                /* TODO: SET VALUE FOR CLOSING FILE WRITER*/ 
             } else {
                 write_size = PAYLOAD_SIZE;
             }
             fwrite(window[itr % WINDOW_SIZE]->payload, 1, write_size, fw);
             if (window[itr % WINDOW_SIZE]->type == (PACKET_TYPE) 2) {
-               fclose(fw); 
+                if (fw != NULL) {
+                    gettimeofday(&end_time_1, 0);
+                    printf("done writing to file\n");
+                    fclose(fw); 
+                    gettimeofday(&end_time_2, 0);
+                    fw  = NULL;
+                    printf("time1-1: %d\n", 
+                            (end_time_1.tv_sec-start_time_1.tv_sec)*1000000 + 
+                            end_time_1.tv_usec-start_time_1.tv_usec);
+                    printf("time1-2: %d\n", 
+                            (end_time_2.tv_sec-start_time_1.tv_sec)*1000000 + 
+                            end_time_2.tv_usec-start_time_1.tv_usec);
+                    printf("time2-1: %d\n", 
+                            (end_time_1.tv_sec-start_time_2.tv_sec)*1000000 + 
+                            end_time_1.tv_usec-start_time_2.tv_usec);
+                    printf("time2-2: %d\n", 
+                            (end_time_2.tv_sec-start_time_2.tv_sec)*1000000 + 
+                            end_time_2.tv_usec-start_time_2.tv_usec);
+                    /* TODO: set is_transferring to 0, dequeue and free from 
+                     transfer queue. */
+                }
             }
+            free(window[itr % WINDOW_SIZE]);
             window[itr % WINDOW_SIZE] = NULL;
             itr++;
         }
@@ -204,7 +268,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
         NackNode *nack_free;
         while (nack_queue_head != NULL 
                && nack_queue_head->id <= sequence_number) {
-            printf("removing from nack queue id: %d\n", nack_queue_head->id);
+           /* printf("removing from nack queue id: %d\n",nack_queue_head->id);*/
             nack_free = nack_queue_head;
             nack_queue_head = nack_queue_head->next;
             free(nack_free);
@@ -213,6 +277,8 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
             nack_queue_tail = NULL;
         } 
     } else {
+        printf("packet id %d was not expected id %d\n", packet->id, 
+            sequence_number+1);
         /* This is not the next expected packet. It is already, maybe, added to window above. 
          * Now possibly update nack queue. */
         if (nack_queue_tail != NULL && nack_queue_tail->id < packet->id) {
@@ -299,9 +365,9 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
     /* TODO: what should ack be if haven't received a packet yet?*/
     responsePacket->type = (PACKET_TYPE) 2;
     responsePacket->ack_id = sequence_number;
-    number_of_nacks = transferNacksToPayload(&(responsePacket->nacks[0]), 
+    number_of_nacks = transferNacksToPayload(responsePacket->nacks, 
                           packet->id, sequence_number);
-    printf("sending ack %d, nacks packet\n", responsePacket->ack_id);
+    /*printf("sending ack %d, nacks packet\n", responsePacket->ack_id);*/
     sendto_dbg(ss, (char *)responsePacket, sizeof(PACKET_TYPE)
                + sizeof(PACKET_ID) + number_of_nacks*sizeof(PACKET_ID), 0,
                (struct sockaddr *)send_addr, sizeof(*send_addr));
@@ -312,6 +378,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
 
 int transferNacksToPayload(PACKET_ID *nack_payload_ptr, PACKET_ID rcvd_id, 
                            PACKET_ID sequence_id) {
+    printf("rcvd_id: %d. seq_id: %d\n", rcvd_id, sequence_id);
     int number_of_nacks_added = 0;
     NackNode *itr = nack_queue_head;
     while (itr != NULL && itr->id < rcvd_id) {
@@ -336,6 +403,7 @@ void handleTransferPacket(Packet *packet, int ip, int ss,
     }
     /* If the current sender is first in the queue, want to initiate tranfer. */
     if (transfer_queue_head != NULL && transfer_queue_head->sender_ip == ip) {
+        gettimeofday(&start_time_1, 0);
         /* handle transfer initiation */
         initiateTransfer(packet->payload, ip, ss, send_addr);
     } else {
@@ -385,6 +453,7 @@ void addToQueue(Packet *packet, int ip) {
 */
 void initiateTransfer(char *file_name, int ip, int ss, 
                       struct sockaddr_in *send_addr) {
+    gettimeofday(&start_time_2, 0);
     /* Create ready for transfer response packet */
     Packet responsePacket;
     /*IP address of host to send to.*/
@@ -420,6 +489,7 @@ void initiateTransfer(char *file_name, int ip, int ss,
             perror("fopen");
             exit(0);
         }
+        current_ncp_id = ip;
         is_transferring = 1;
     }
 }
