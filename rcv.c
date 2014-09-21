@@ -8,7 +8,7 @@
 /* Function prototypes */
 int gethostname(char*,size_t);
 void handleTransferPacket(Packet *packet, int ip, int ss, struct sockaddr_in *send_addr);
-char isInQueue(int ip);
+int isInQueue(int ip);
 void addToQueue(Packet *packet, int ip);
 void initiateTransfer(char *file_name, int ip, int ss, struct sockaddr_in *send_addr);
 int transferNacksToPayload(PACKET_ID *nack_payload_ptr, PACKET_ID rcvd_id, 
@@ -111,11 +111,11 @@ int main(int argc, char **argv)
     FD_ZERO( &mask );
     FD_ZERO( &dummy_mask );
     FD_SET( sr, &mask );
-    while (timeout_counter < 1001) {
+    while (timeout_counter < 1000000) {
         temp_mask = mask;
         if (is_transferring == 0) {
-            timeout.tv_sec = 1;
-            timeout.tv_usec = 0;
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 500;
         } else {
             timeout.tv_sec = 0;
             timeout.tv_usec = 1000;
@@ -154,10 +154,11 @@ int main(int argc, char **argv)
 
             }
 	} else {
+            timeout_counter++;
             if (is_transferring == 0 && transfer_queue_head != NULL) {
                 initiateTransfer(transfer_queue_head->name, transfer_queue_head->sender_ip, ss, &send_addr);
                 timeout_counter = 0;
-            } else if (is_transferring && ++timeout_counter <= 100) {
+            } else if (is_transferring && timeout_counter <= 100) {
                 /* TODO: Make macro for timeout_counter limit.*/
                 if (nack_queue_tail != NULL) {
                     int number_of_nacks = 0;
@@ -186,18 +187,30 @@ int main(int argc, char **argv)
                                (struct sockaddr*)(&send_addr), 
                                sizeof(send_addr));
                 }
-            } else if (is_transferring && timeout_counter > 1000) {
+            } else if (is_transferring) {
+                timeout_counter = 0;
                 if (fw != NULL) {
                   fclose(fw); 
                   fw  = NULL;
                 }                
                 Node *free_node = transfer_queue_head;
+                printf("free ip %d\n", transfer_queue_head->sender_ip);
                 transfer_queue_head = transfer_queue_head->next;
                 free(free_node);
                 is_transferring = 0;
+                if (transfer_queue_head == NULL) {
+                    printf("transfer queue null\n");
+                }
             }
             fflush(0);
         }
+    }
+    
+    Node *free_node;
+    while(transfer_queue_head != NULL) {
+        free_node = transfer_queue_head;
+        transfer_queue_head = free_node->next;
+        free(free_node);
     }
     return 0;
 
@@ -285,10 +298,8 @@ return val) */
             free(nack_free);
         }
         if (nack_queue_head == NULL) {
-            printf("head and tail are now null\n");
             nack_queue_tail = NULL;
         }
-        sequential_count++;
     } else {
         /* This is not the next expected packet. It is already, maybe, added to window above. 
          * Now possibly update nack queue. */
@@ -390,7 +401,7 @@ int transferNacksToPayload(PACKET_ID *nack_payload_ptr, PACKET_ID rcvd_id,
     NackNode *itr = nack_queue_head;
     while (itr != NULL && itr->id < rcvd_id) {
         if (itr->count % NACK_WAIT_COUNT == 0) {
-            printf("adding %u to nack payload\n", itr->id);
+/*             printf("adding %u to nack payload\n", itr->id);*/
             memcpy(nack_payload_ptr, &itr->id, sizeof(PACKET_ID)); 
             nack_payload_ptr++;
             number_of_nacks_added++;
@@ -405,7 +416,8 @@ void handleTransferPacket(Packet *packet, int ip, int ss,
                           struct sockaddr_in *send_addr) {
     printf("file name: %s\n", packet->payload);
     /* If the ip is not in the queue, we want to add it to the tranfer queue */
-    if (!isInQueue(ip)) {
+    if (isInQueue(ip) == 0) {
+        printf("ip is not in queue\n");
         addToQueue(packet, ip);
     }
     /* If the current sender is first in the queue, want to initiate tranfer. */
@@ -427,7 +439,7 @@ void handleTransferPacket(Packet *packet, int ip, int ss,
         }
 }
 
-char isInQueue(int ip) {
+int isInQueue(int ip) {
     Node *itr = transfer_queue_head;
     while (itr != NULL) {
         if (itr->sender_ip == ip) {

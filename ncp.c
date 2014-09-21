@@ -190,7 +190,7 @@ source_file_name,
             timeout.tv_usec = 0;
         } else {
             timeout.tv_sec = 0;
-            timeout.tv_usec= 50; /* Send packet every 0.5ms */
+            timeout.tv_usec= 10; /* Send packet every 0.5ms */
         }
 
         temp_mask = mask;
@@ -202,6 +202,7 @@ source_file_name,
             /* Select has been triggered */
             if ( FD_ISSET( sr, &temp_mask) ) /* Receiving socket has packet */
             {
+                printf("received packet\n");
                 timeout_counter = 0;
                 /* printf("RECEIVED A PACKET\n");*/
                 /* Get data from ethernet interface */
@@ -320,7 +321,6 @@ another transfer.");
             }
         } else {
             burst_count = 0;
-            /*printf("timeout\n");*/
             /* Select has timed out. Send a packet. */
             if (begun == 0) /* Transfer has not yet begun. Send transfer packet 
 */
@@ -351,6 +351,7 @@ another transfer.");
                         && fr != NULL) {
                     /* Increment to get the next id of the packet to be sent. */
                     packet_id++;
+                    printf("start of window: %d\n", start_of_window);
                     printf("create packet for id %d\n", packet_id);
 
                     /* Read file into char buffer */
@@ -393,9 +394,10 @@ another transfer.");
                 }
                 sendto_dbg( ss, (char *)dPacket, packet_size, 0,
                             (struct sockaddr *)&send_addr, sizeof(send_addr));
-                /* We have timed out after hitting the end of the window*/
-                /* increment timeout counter.*/
-                if (++timeout_counter >= 1000) {
+            
+
+
+if (++timeout_counter >= 10000) {
                     eof = 1;
                     if (read_last_packet == 0) {
                         fclose(fr);
@@ -410,3 +412,4 @@ another transfer.");
     }
     return 0;
 }
+ 
