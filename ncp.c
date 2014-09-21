@@ -192,7 +192,7 @@ int main(int argc, char **argv)
 	    timeout.tv_usec = 0;
         } else {
            timeout.tv_sec = 0;
-           timeout.tv_usec= 100; /* Send packet every 0.5ms */
+           timeout.tv_usec= 500; /* Send packet every 0.5ms */
         }
 
         temp_mask = mask;
@@ -264,7 +264,8 @@ int main(int argc, char **argv)
                     if (((bytes - sizeof(PACKET_TYPE) - sizeof(PACKET_ID)) 
                         >= sizeof(PACKET_ID)) && ack_id >= start_of_window-1) {
                         /* If there is at least one nack in the packet*/
-                        
+                        printf("first nack in from packet: %d\n", 
+                            ack_nack_packet->nacks[0]);
                         /* send response packet for first nack */
                         response_packet = 
                             (Packet *)window[(ack_nack_packet->nacks[0]) % 

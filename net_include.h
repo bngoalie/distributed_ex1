@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -10,7 +11,7 @@
 #include <errno.h>
 
 #define PORT	        10110
-#define WINDOW_SIZE     1024
+#define WINDOW_SIZE     512
 #define MAX_PACKET_SIZE 1400
 #define PACKET_ID int
 #define PACKET_TYPE int
