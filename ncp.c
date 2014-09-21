@@ -183,8 +183,8 @@ int main(int argc, char **argv)
     nack_list_head.next = NULL;
 
     /* Indefinite I/O multiplexing loop */
-    int eof = 1;
-    while(eof != 0)
+    int eof = 0;
+    while(eof == 0)
     {
         if (begun == 0) {
              /* Set delay to three seconds while waiting to init */
@@ -195,8 +195,6 @@ int main(int argc, char **argv)
            timeout.tv_usec= 500; /* Send packet every 0.5ms */
         }
 
-
-        printf("sec: %d. usec: %d.\n", timeout.tv_sec, timeout.tv_usec); 
         temp_mask = mask;
         
         /* Multiplex select */
@@ -206,18 +204,16 @@ int main(int argc, char **argv)
             if ( FD_ISSET( sr, &temp_mask) ) /* Receiving socket has packet */
             {
                 timeout_counter = 0;
-                printf("RECEIVED A PACKET\n");
+               /* printf("RECEIVED A PACKET\n");*/
                 /* Get data from ethernet interface */
                 from_len = sizeof(from_addr);
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
-                printf("size of packet is %d bytes\n", bytes);
                 rcvd_packet = (Packet *) mess_buf;
 
                 if(begun == 0) /* Transfer has not yet begun */
                 {
-                    printf("entered begun if\n");
                     if (rcvd_packet->type == (PACKET_TYPE)0)  
                     { /* Receiver is ready TODO: cast to packet type */
 
@@ -228,7 +224,7 @@ int main(int argc, char **argv)
                         begun = 1;
                         start_of_window = 0;
                         at_end_of_window = 0;
-                        printf("Transfer has begun...");
+                        printf("Transfer has begun...\n");
                    }
                     else    /* Receiver is NOT ready */
                     {
@@ -239,27 +235,17 @@ int main(int argc, char **argv)
                     /* Transfer has already begun. Received ack/nack packet */
                     ack_nack_packet = (AckNackPacket *)rcvd_packet;
                     ack_id = ack_nack_packet->ack_id;
-                    printf("ack_id %d\n",ack_id);
+                   /* printf("ack_id %d\n",ack_id);*/
                     /* TODO: We do */ 
                     if (read_last_packet != 0 && ack_id == packet_id ) {
                         eof = 1;
                     }
-                    
-                    int nackIdx;
-                    for (nackIdx = 0; nackIdx < (bytes - sizeof(PACKET_TYPE) - 
-                            sizeof(PACKET_ID))/sizeof(PACKET_ID); nackIdx++) {
-                        printf("packet has nack id %d,", 
-                                ack_nack_packet->nacks[nackIdx]); 
-                    }
-                    printf("\n");
 
                     /* If the cummuluative ack is in the window. we remove 
                      * packets from the sender's window and shift the window*/
                     if (ack_id >= start_of_window) {
                         /* free packets up to ack_id, move window*/
                         for (;start_of_window < ack_id + 1;start_of_window++) {
-                            if (window[start_of_window % WINDOW_SIZE] == NULL) 
-                                printf("null\n");
                             free(window[start_of_window % WINDOW_SIZE]);
                             window[start_of_window % WINDOW_SIZE] = NULL;
                         }
@@ -277,12 +263,6 @@ int main(int argc, char **argv)
                     /* ACK/NACK QUEUE/RESPONSE LOGIC HERE */
                     if (((bytes - sizeof(PACKET_TYPE) - sizeof(PACKET_ID)) 
                         >= sizeof(PACKET_ID)) && ack_id >= start_of_window-1) {
-                        NackNode *nackNodeItr = &nack_list_head;
-                        while (nackNodeItr->next != NULL) {
-                            printf("nack queueue has %d\n", 
-nackNodeItr->next->id);
-                            nackNodeItr = nackNodeItr->next;
-                        }
                         /* If there is at least one nack in the packet*/
                         
                         /* send response packet for first nack */
@@ -335,7 +315,6 @@ nackNodeItr->next->id);
                         }
                     }
                 }
-                free(rcvd_packet);
             } 
             else    /* Something else triggered select (shouldn't happen) */
             {
@@ -343,21 +322,16 @@ nackNodeItr->next->id);
                 exit(1);    
             }
 	} else {
-            NackNode *nackNodeItr = &nack_list_head;
-            while (nackNodeItr->next != NULL) {
-                printf("nack queueue has %d\n", nackNodeItr->next->id);
-                nackNodeItr = nackNodeItr->next;
-            }
-            printf("timeout\n");
+          /*  printf("timeout\n");*/
             /* Select has timed out. Send a packet. */
             if (begun == 0) /* Transfer has not yet begun. Send transfer packet */
             {
                 sendto_dbg(ss, (char *)packet, packet_size, 0,
 		        (struct sockaddr *)&send_addr, sizeof(send_addr));
-                printf("Attempting to initiate transfer\n");
+              /*  printf("Attempting to initiate transfer\n");*/
             } else if (nack_list_head.next != NULL) {
-                printf("first node in nack list: %d\n", 
-                    nack_list_head.next->id);
+               /* printf("first node in nack list: %d\n", 
+                    nack_list_head.next->id);*/
                 dPacket = window[nack_list_head.next->id % WINDOW_SIZE];
                 
                 packet_size = MAX_PACKET_SIZE;
@@ -373,6 +347,7 @@ nackNodeItr->next->id);
                      && packet_id + 1 < start_of_window + WINDOW_SIZE) {
                 /* Increment to get the next id of the packet to be sent. */
                 packet_id++;
+            /*printf("create packet for id %d\n", packet_id);*/
                 /* Transfer has already begun. Not at end of window. Send data 
                  * packet */
                 /* Read file into char buffer */
@@ -400,20 +375,29 @@ nackNodeItr->next->id);
                 }
                 
                 memcpy(dPacket->payload, input_buf, bytes);
-                printf("sending data packet\n");
+               /* printf("sending data packet\n");*/
                 sendto_dbg( ss, (char *)dPacket, packet_size, 0,
                     (struct sockaddr *)&send_addr, sizeof(send_addr) );
 
                 /* Store packet in array for future use */
                 window[packet_id % WINDOW_SIZE] = dPacket;
             } else {
-                /* TODO: We have timed out after hitting the end of the window*/
+                /* Resend packet from end of the window/most recently sent */
+                dPacket = window[packet_id % WINDOW_SIZE];
+                
+                packet_size = MAX_PACKET_SIZE;
+                if (dPacket->type == (PACKET_TYPE) 2) {
+                    packet_size = size_of_last_packet;
+                }
+                sendto_dbg( ss, (char *)dPacket, packet_size, 0,
+                    (struct sockaddr *)&send_addr, sizeof(send_addr));
+                /* We have timed out after hitting the end of the window*/
                 /* increment timeout counter.*/ 
-                if (++timeout_counter >= 100) {
+                if (++timeout_counter >= 1000) {
+                    eof = 1;
                     if (read_last_packet == 0) {
                        fclose(fr);
                     }
-                    eof = 1;
                 }
             }
         }

@@ -142,11 +142,12 @@ int main(int argc, char **argv)
                                         sequence_number);
                 }
 
-                printf( "Received from (%d.%d.%d.%d)\n", 
+               /* printf( "Received from (%d.%d.%d.%d)\n", 
 						(htonl(from_ip) & 0xff000000)>>24,
 						(htonl(from_ip) & 0x00ff0000)>>16,
 						(htonl(from_ip) & 0x0000ff00)>>8,
-						(htonl(from_ip) & 0x000000ff));
+						(htonl(from_ip) & 0x000000ff)); 
+                */
 
             }
 	} else {
@@ -174,22 +175,24 @@ int main(int argc, char **argv)
                         transferNacksToPayload(&(responsePacket->nacks[0]), 
                                         nack_queue_tail->id + 1, 
                                         sequence_number);
-                    printf("sending ack %d,nacks packet\n", 
-                        responsePacket->ack_id);
+                   /* printf("sending ack %d,nacks packet\n", 
+                        responsePacket->ack_id);*/
                     sendto_dbg(ss, (char *)responsePacket, sizeof(PACKET_TYPE)
                                + sizeof(PACKET_ID) 
                                + number_of_nacks*sizeof(PACKET_ID), 0, 
                                (struct sockaddr*)(&send_addr), 
                                sizeof(send_addr));
                 }
-            } else if (is_transferring && timeout_counter > 100) {
-                fclose(fw);
+            } else if (is_transferring && timeout_counter > 1000) {
+                if (fw != NULL) {
+                  fclose(fw); 
+                  fw  = NULL;
+                }                
                 Node *free_node = transfer_queue_head;
                 transfer_queue_head = transfer_queue_head->next;
                 free(free_node);
                 is_transferring = 0;
             }
-            printf(".");
             fflush(0);
         }
     }
@@ -202,7 +205,7 @@ int main(int argc, char **argv)
 int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                       int ss, struct sockaddr_in *send_addr, 
                       PACKET_ID sequence_number) {
-    printf("Handling data packet with id: %d\n", packet->id);
+   /* printf("Handling data packet with id: %d\n", packet->id);*/
     int number_of_nacks = 0;
     int write_size = 0;
     /* If the packet has not been set yet, but it in the window */
@@ -229,8 +232,13 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
             }
             fwrite(window[itr % WINDOW_SIZE]->payload, 1, write_size, fw);
             if (window[itr % WINDOW_SIZE]->type == (PACKET_TYPE) 2) {
-               fclose(fw); 
+                if (fw != NULL) {
+                    printf("done writing to file\n");
+                    fclose(fw); 
+                    fw  = NULL;
+                }
             }
+            free(window[itr % WINDOW_SIZE]);
             window[itr % WINDOW_SIZE] = NULL;
             itr++;
         }
@@ -238,7 +246,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
         NackNode *nack_free;
         while (nack_queue_head != NULL 
                && nack_queue_head->id <= sequence_number) {
-            printf("removing from nack queue id: %d\n", nack_queue_head->id);
+           /* printf("removing from nack queue id: %d\n",nack_queue_head->id);*/
             nack_free = nack_queue_head;
             nack_queue_head = nack_queue_head->next;
             free(nack_free);
@@ -333,9 +341,9 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
     /* TODO: what should ack be if haven't received a packet yet?*/
     responsePacket->type = (PACKET_TYPE) 2;
     responsePacket->ack_id = sequence_number;
-    number_of_nacks = transferNacksToPayload(&(responsePacket->nacks[0]), 
+    number_of_nacks = transferNacksToPayload(responsePacket->nacks, 
                           packet->id, sequence_number);
-    printf("sending ack %d, nacks packet\n", responsePacket->ack_id);
+    /*printf("sending ack %d, nacks packet\n", responsePacket->ack_id);*/
     sendto_dbg(ss, (char *)responsePacket, sizeof(PACKET_TYPE)
                + sizeof(PACKET_ID) + number_of_nacks*sizeof(PACKET_ID), 0,
                (struct sockaddr *)send_addr, sizeof(*send_addr));
@@ -350,7 +358,7 @@ int transferNacksToPayload(PACKET_ID *nack_payload_ptr, PACKET_ID rcvd_id,
     NackNode *itr = nack_queue_head;
     while (itr != NULL && itr->id < rcvd_id) {
         if (itr->count % NACK_WAIT_COUNT == 0) {
-            printf("adding %u to nack payload\n", itr->id);
+            /*printf("adding %u to nack payload\n", itr->id);*/
             memcpy(nack_payload_ptr, &itr->id, sizeof(PACKET_ID)); 
             nack_payload_ptr++;
             number_of_nacks_added++;
