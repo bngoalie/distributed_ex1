@@ -220,9 +220,9 @@ int main(int argc, char **argv)
                 if(begun == 0) /* Transfer has not yet begun */
                 {
                     printf("entered begun if\n");
-                    if (rcvd_packet->type == (PACKET_TYPE)0) /* Receiver is 
-ready TODO: cast to packet type */
-                    {
+                    if (rcvd_packet->type == (PACKET_TYPE)0)  
+                    { /* Receiver is ready TODO: cast to packet type */
+
                         if (packet != NULL) {
                             free(packet);
                             packet = NULL;

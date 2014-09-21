@@ -53,3 +53,7 @@ typedef struct {
     PACKET_ID nacks[MAX_PACKET_SIZE- sizeof(PACKET_ID) - sizeof(PACKET_TYPE)];
 } AckNackPacket;
 
+typedef struct {
+    PACKET_TYPE type; /* 0: filename, 1: data, 2: end */
+    char payload[MAX_PACKET_SIZE - sizeof(PACKET_TYPE)];
+} TcpPacket;

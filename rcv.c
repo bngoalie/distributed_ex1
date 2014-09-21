@@ -116,8 +116,8 @@ int main(int argc, char **argv)
         num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
         if (num > 0) {
             if ( FD_ISSET( sr, &temp_mask) ) {
-                from_len = sizeof(from_addr);
                 /* get data from ethernet interface*/
+                from_len = sizeof(from_addr);
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
                           (struct sockaddr *)&from_addr, 
                           &from_len );
@@ -334,8 +334,7 @@ void handleTransferPacket(Packet *packet, int ip, int ss,
     if (!isInQueue(ip)) {
         addToQueue(packet, ip);
     }
-    /* If the current sender is first in the queue, want to initiate 
-tranfer. */
+    /* If the current sender is first in the queue, want to initiate tranfer. */
     if (transfer_queue_head != NULL && transfer_queue_head->sender_ip == ip) {
         /* handle transfer initiation */
         initiateTransfer(packet->payload, ip, ss, send_addr);
