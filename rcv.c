@@ -41,6 +41,7 @@ DataPacket            *window[WINDOW_SIZE];
 char                  is_transferring = 0;     
 FILE *fw = NULL;
 int                   size_of_last_payload;
+int                   current_ncp_id;
 
 int main(int argc, char **argv)
 {
@@ -107,15 +108,16 @@ int main(int argc, char **argv)
     {
         temp_mask = mask;
         if (is_transferring == 0) {
-            timeout.tv_sec = 10;
+            timeout.tv_sec = 1;
             timeout.tv_usec = 0;
         } else {
             timeout.tv_sec = 0;
-            timeout.tv_usec = 10000;
+            timeout.tv_usec = 500;
         }
         num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
         if (num > 0) {
             if ( FD_ISSET( sr, &temp_mask) ) {
+                timeout_counter = 0;
                 /* get data from ethernet interface*/
                 from_len = sizeof(from_addr);
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,  
@@ -151,9 +153,41 @@ int main(int argc, char **argv)
             if (is_transferring == 0 && transfer_queue_head != NULL) {
                 initiateTransfer(transfer_queue_head->name, transfer_queue_head->sender_ip, ss, &send_addr);
                 timeout_counter = 0;
-            }
-            if (is_transferring && ++timeout_counter >= 100) {
-               /* TODO: send ack/nack packet */
+            } else if (is_transferring && ++timeout_counter <= 100) {
+                /* TODO: Make macro for timeout_counter limit.*/
+                if (nack_queue_tail != NULL) {
+                    int number_of_nacks = 0;
+                    /* Send ack-nack packet*/
+                    AckNackPacket *responsePacket = 
+                        malloc(sizeof(AckNackPacket));
+                    if (!responsePacket) {
+                        printf("Malloc failed for ack-nack Packet.\n");
+                        exit(0);
+                    }
+                    /*IP address of host to send to.*/
+                    send_addr.sin_addr.s_addr = current_ncp_id; 
+                    
+                    /* Ack-nack packet type */
+                    responsePacket->type = (PACKET_TYPE) 2;
+                    responsePacket->ack_id = sequence_number;
+                    number_of_nacks = 
+                        transferNacksToPayload(&(responsePacket->nacks[0]), 
+                                        nack_queue_tail->id + 1, 
+                                        sequence_number);
+                    printf("sending ack %d,nacks packet\n", 
+                        responsePacket->ack_id);
+                    sendto_dbg(ss, (char *)responsePacket, sizeof(PACKET_TYPE)
+                               + sizeof(PACKET_ID) 
+                               + number_of_nacks*sizeof(PACKET_ID), 0, 
+                               (struct sockaddr*)(&send_addr), 
+                               sizeof(send_addr));
+                }
+            } else if (is_transferring && timeout_counter > 100) {
+                fclose(fw);
+                Node *free_node = transfer_queue_head;
+                transfer_queue_head = transfer_queue_head->next;
+                free(free_node);
+                is_transferring = 0;
             }
             printf(".");
             fflush(0);
@@ -420,6 +454,7 @@ void initiateTransfer(char *file_name, int ip, int ss,
             perror("fopen");
             exit(0);
         }
+        current_ncp_id = ip;
         is_transferring = 1;
     }
 }
