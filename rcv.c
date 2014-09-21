@@ -108,15 +108,14 @@ int main(int argc, char **argv)
     FD_ZERO( &mask );
     FD_ZERO( &dummy_mask );
     FD_SET( sr, &mask );
-    for(;;)
-    {
+    while (timeout_counter < 1001) {
         temp_mask = mask;
         if (is_transferring == 0) {
             timeout.tv_sec = 1;
             timeout.tv_usec = 0;
         } else {
             timeout.tv_sec = 0;
-            timeout.tv_usec = 50;
+            timeout.tv_usec = 1000;
         }
         num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
         if (num > 0) {

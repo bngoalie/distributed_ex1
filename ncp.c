@@ -57,6 +57,8 @@ int main(int argc, char **argv)
     int                     timeout_counter = 0;
     PACKET_ID               ack_id;
     char                    read_last_packet = 0;
+    int                     burst_count = 0;
+
     /* Need three arguements: loss_rate_percent, source_file_name, and 
        dest_file_name@comp_name */
     if(argc != 4) {
@@ -322,7 +324,8 @@ int main(int argc, char **argv)
                 exit(1);    
             }
 	} else {
-          /*  printf("timeout\n");*/
+            burst_count = 0;
+            printf("timeout\n"); 
             /* Select has timed out. Send a packet. */
             if (begun == 0) /* Transfer has not yet begun. Send transfer packet */
             {
@@ -345,35 +348,41 @@ int main(int argc, char **argv)
                 free(tmp_nack_node);
             } else if (read_last_packet == 0 
                      && packet_id + 1 < start_of_window + WINDOW_SIZE) {
-                /* Increment to get the next id of the packet to be sent. */
-                packet_id++;
-            /*printf("create packet for id %d\n", packet_id);*/
                 /* Transfer has already begun. Not at end of window. Send data 
                  * packet */
-                /* Read file into char buffer */
-                bytes = fread(input_buf, 1, PAYLOAD_SIZE, fr);
+                while (burst_count < BURST_MAX 
+                       && packet_id + 1 < start_of_window + WINDOW_SIZE) {
+                    /* Increment to get the next id of the packet to be sent. */
+                    packet_id++;
+                    printf("create packet for id %d\n", packet_id);
+
+                    /* Read file into char buffer */
+                    bytes = fread(input_buf, 1, PAYLOAD_SIZE, fr);
                 
-                /* Form data packet within the window */
-                dPacket = &(window[packet_id % WINDOW_SIZE]);
- 
-                dPacket->id = packet_id;
-                packet_size = MAX_PACKET_SIZE;
-                if(feof(fr)) /* If we've reached the EOF, set type = 2 */ {
-                    fclose(fr);
-                    read_last_packet = 1;
-                    dPacket->type = (PACKET_TYPE)2;
-                    size_of_last_packet = bytes + sizeof(PACKET_ID) + 
-                                          sizeof(PACKET_TYPE);
-                    packet_size = size_of_last_packet;
-                } else {
-                    /* If full-size packet, set type = 1 */
-                    dPacket->type = (PACKET_TYPE)1;
+                    /* Form data packet within the window */
+                    dPacket = &(window[packet_id % WINDOW_SIZE]);
+    
+                    dPacket->id = packet_id;
+                    packet_size = MAX_PACKET_SIZE;
+                    if(feof(fr)) /* If we've reached the EOF, set type = 2 */ {
+                        fclose(fr);
+                        read_last_packet = 1;
+                        dPacket->type = (PACKET_TYPE)2;
+                        size_of_last_packet = bytes + sizeof(PACKET_ID) + 
+                                            sizeof(PACKET_TYPE);
+                        packet_size = size_of_last_packet;
+                    } else {
+                        /* If full-size packet, set type = 1 */
+                        dPacket->type = (PACKET_TYPE)1;
+                    }
+                    
+                    memcpy(dPacket->payload, input_buf, bytes);
+                /* printf("sending data packet\n");*/
+                    sendto_dbg( ss, (char *)dPacket, packet_size, 0,
+                        (struct sockaddr *)&send_addr, sizeof(send_addr) );
+                    burst_count++;
                 }
                 
-                memcpy(dPacket->payload, input_buf, bytes);
-               /* printf("sending data packet\n");*/
-                sendto_dbg( ss, (char *)dPacket, packet_size, 0,
-                    (struct sockaddr *)&send_addr, sizeof(send_addr) );
             } else {
                 /* Resend packet from end of the window/most recently sent */
                 dPacket = &(window[packet_id % WINDOW_SIZE]);
