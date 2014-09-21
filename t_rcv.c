@@ -1,16 +1,24 @@
 #include "net_include.h"
-
+#include <unistd.h>
+#define MEG    1048576
+#define MEG50  50*MEG
 int main()
 {
 	fd_set	    mask;
 	fd_set	    dummy_mask, temp_mask;
     struct      sockaddr_in name;
+    struct      timeval start_time;
+    struct      timeval prev_time;
+    struct      timeval end_time;
+    int         total_time;
     int         mess_len;
     int         name_len;
 	int	        s;
 	int	        num;
 	char	    mess_buf[MAX_PACKET_SIZE];
-    long	    on=1;
+    long	    on = 1;
+    long        sent = 0;
+    long        threshold = MEG50;
     int         bytes = 0;
     int         conn = 0;
     int         done = 0;
@@ -55,6 +63,9 @@ int main()
 			if (FD_ISSET(s, &temp_mask)) {
                 /* If no connection, establish and get filename */
                 if (!conn) {
+                    gettimeofday(&start_time, 0); /* Start time */
+                    prev_time.tv_sec = start_time.tv_sec;
+                    prev_time.tv_usec = start_time.tv_usec;
                     s = accept (s, 0, 0);
                     FD_SET(s, &mask);
                     conn = 1;
@@ -63,7 +74,7 @@ int main()
                         name_len = mess_len - sizeof(mess_len);
                         bytes = recv(s, mess_buf, name_len, 0 );
                         mess_buf[name_len] = '\0';
-                        printf("Opening file %s for reading...\n", &mess_buf[0]);
+                        printf("Opening file %s for writing...\n", &mess_buf[0]);
                         /* Filename packet - open file for writing */
                         if((fw = fopen(mess_buf, "w")) == NULL) {
                             perror("t_rcv: fopen");
@@ -76,16 +87,36 @@ int main()
                 } else {  /* If connection is already established, get data */
                     bytes = recv(s, mess_buf, MAX_PACKET_SIZE, 0);
                     if (bytes > 0) {
+                        sent += bytes;
+                        if(sent >= threshold){
+                            threshold += MEG50;
+                            gettimeofday(&end_time, 0);
+                            total_time = (end_time.tv_sec*1e6 + end_time.tv_usec) - 
+                                    (prev_time.tv_sec*1e6 + prev_time.tv_usec);
+                            printf("Amount transferred: %f Megabytes\n",
+                                    (double) sent / MEG);
+                            printf("Rate of last 50M: %f megabits/sec\n", 
+                                    8.0 * MEG50 / (double) total_time);
+                            prev_time.tv_sec = end_time.tv_sec;
+                            prev_time.tv_usec = end_time.tv_usec;
+                        }
                         fwrite(&mess_buf[0], 1, bytes, fw);
                     }
-                    if (bytes < MAX_PACKET_SIZE || feof(fw))
+                    /*if (bytes < MAX_PACKET_SIZE || feof(fw))*/
+                    if (bytes == 0)
                         done = 1;
                 }   
             }
         }
     }
     
-    /* Close and return */
+    /* Measure time, close and return */
+    gettimeofday(&end_time, 0);
+    total_time = (end_time.tv_sec*1e6 + end_time.tv_usec) - 
+                    (start_time.tv_sec*1e6 + start_time.tv_usec);
+    printf("Total size: %lu bytes\n", sent);
+    printf("Total time: %d usec\n", total_time);
+    printf("Total rate: %f megabits/sec", 8.0*sent/total_time);
     fclose(fw);
     return 0;	
 }
