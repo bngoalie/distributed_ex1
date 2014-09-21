@@ -192,7 +192,7 @@ int main(int argc, char **argv)
 	    timeout.tv_usec = 0;
         } else {
            timeout.tv_sec = 0;
-           timeout.tv_usec= 500; /* Send packet every 0.5ms */
+           timeout.tv_usec= 100; /* Send packet every 0.5ms */
         }
 
         temp_mask = mask;
@@ -215,7 +215,7 @@ int main(int argc, char **argv)
                 if(begun == 0) /* Transfer has not yet begun */
                 {
                     if (rcvd_packet->type == (PACKET_TYPE)0)  
-                    { /* Receiver is ready TODO: cast to packet type */
+                    { /* Receiver is ready */
 
                         if (packet != NULL) {
                             free(packet);
