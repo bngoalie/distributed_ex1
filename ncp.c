@@ -192,7 +192,7 @@ int main(int argc, char **argv)
 	    timeout.tv_usec = 0;
         } else {
            timeout.tv_sec = 0;
-           timeout.tv_usec= 500; /* Send packet every 0.5ms */
+           timeout.tv_usec= 50; /* Send packet every 0.5ms */
         }
 
         temp_mask = mask;

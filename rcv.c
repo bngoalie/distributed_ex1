@@ -116,7 +116,7 @@ int main(int argc, char **argv)
             timeout.tv_usec = 0;
         } else {
             timeout.tv_sec = 0;
-            timeout.tv_usec = 500;
+            timeout.tv_usec = 50;
         }
         num = select( FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
         if (num > 0) {
@@ -216,7 +216,8 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
     int number_of_nacks = 0;
     int write_size = 0;
     /* If the packet has not been set yet, but it in the window */
-    if (window[(packet->id) % WINDOW_SIZE] == NULL) {
+    if (packet->id > sequence_number 
+        && window[(packet->id) % WINDOW_SIZE] == NULL) {
         window[(packet->id) % WINDOW_SIZE] = packet;
         if (packet->type == (PACKET_TYPE)2) {
             size_of_last_payload = packet_size - sizeof(PACKET_ID) - sizeof(PACKET_TYPE);
@@ -228,6 +229,8 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
         /* Write payload to file */
         while(window[itr % WINDOW_SIZE] != NULL) {
             sequence_number = itr;
+            printf("iterating with itr %d\n", itr);
+            printf("the data packet has id %d\n", window[itr%WINDOW_SIZE]->id);
             /* TODO: Do we need to check how many bytes fwrite wrote? (it's return val) */
             /* payload size = packet_size - size of ID field - size of type field*/
             if (window[itr % WINDOW_SIZE]->type == (PACKET_TYPE) 2) {
@@ -284,6 +287,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
         if (nack_queue_tail != NULL && nack_queue_tail->id < packet->id) {
             /*The received packet's id is after the id of the tail of nack 
              * queue. need to add nacks for all id's from tail to packet id */
+            printf("line 289, tail id: %d\n", nack_queue_tail->id);
             int idx;
             for (idx = nack_queue_tail->id + 1; idx < packet->id; idx++) {
                 if (window[idx % WINDOW_SIZE] == NULL) {   
@@ -325,6 +329,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                 nack_queue_tail->next = NULL;
             }
         } else if (packet->id >= nack_queue_head->id) {
+            printf("line 331, head id: %d\n", nack_queue_head->id);
             NackNode *tmp;
             if ( nack_queue_head->id == packet->id ) {
                 if (nack_queue_head == nack_queue_tail) {
@@ -365,6 +370,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
     /* TODO: what should ack be if haven't received a packet yet?*/
     responsePacket->type = (PACKET_TYPE) 2;
     responsePacket->ack_id = sequence_number;
+    printf("line 372, packet id: %d\n", packet->id);
     number_of_nacks = transferNacksToPayload(responsePacket->nacks, 
                           packet->id, sequence_number);
     /*printf("sending ack %d, nacks packet\n", responsePacket->ack_id);*/
