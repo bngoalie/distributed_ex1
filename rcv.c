@@ -37,7 +37,8 @@ typedef struct dummy_nack_node
     
 NackNode *nack_queue_head = NULL;
 NackNode *nack_queue_tail = NULL;
-DataPacket            *window[WINDOW_SIZE]; 
+DataPacket            window[WINDOW_SIZE]; 
+Packet                responsePacket;
 char                  is_transferring = 0;     
 FILE *fw = NULL;
 int                   size_of_last_payload;
@@ -61,7 +62,7 @@ int main(int argc, char **argv)
     int                   num;
     char                  mess_buf[MAX_PACKET_SIZE];
     struct timeval        timeout;
-    Packet                *rcvd_packet;
+    Packet                rcvd_packet;
     PACKET_ID             sequence_number = -1;
     int                   loss_rate;
     int                   timeout_counter = 0;
@@ -105,6 +106,7 @@ int main(int argc, char **argv)
     send_addr.sin_family = AF_INET;
     send_addr.sin_port = htons(PORT);
     
+
     FD_ZERO( &mask );
     FD_ZERO( &dummy_mask );
     FD_SET( sr, &mask );
@@ -129,20 +131,16 @@ int main(int argc, char **argv)
                           &from_len );
                 from_ip = from_addr.sin_addr.s_addr;
                 /* TODO: extract logic for handling received packet */
-                rcvd_packet = malloc(sizeof(Packet));
-                if (!rcvd_packet) {
-                    printf("Malloc failed for new tranfer queue node.\n");
-                    exit(0);
-                }
-                memcpy((char *)rcvd_packet, mess_buf, bytes);
-                if (rcvd_packet->type == (PACKET_TYPE) 0) {
+                memcpy((char *)(&rcvd_packet), mess_buf, bytes);
+                if (rcvd_packet.type == (PACKET_TYPE) 0) {
                     gettimeofday(&start_time_1, 0);
-                    /* TODO: Handle tranfer packet */
-                    handleTransferPacket(rcvd_packet, from_ip, ss, &send_addr);             
-                } else if (is_transferring != 0 && transfer_queue_head->sender_ip == from_ip){
+                    /* Handle tranfer packet */
+                    handleTransferPacket(&rcvd_packet, from_ip, ss, &send_addr);
+                } else if (is_transferring != 0 
+                    && transfer_queue_head->sender_ip == from_ip){
                     /* handling data packet. */
                     sequence_number = handleDataPacket(
-                                        (DataPacket *) rcvd_packet, bytes,
+                                        (DataPacket *) (&rcvd_packet), bytes,
                                         from_ip, ss, &send_addr, 
                                         sequence_number);
                 }
@@ -164,26 +162,22 @@ int main(int argc, char **argv)
                 if (nack_queue_tail != NULL) {
                     int number_of_nacks = 0;
                     /* Send ack-nack packet*/
-                    AckNackPacket *responsePacket = 
-                        malloc(sizeof(AckNackPacket));
-                    if (!responsePacket) {
-                        printf("Malloc failed for ack-nack Packet.\n");
-                        exit(0);
-                    }
+                    AckNackPacket *ackNackresponsePacket = &responsePacket;
+                    
                     /*IP address of host to send to.*/
                     send_addr.sin_addr.s_addr = current_ncp_id; 
                     
                     /* Ack-nack packet type */
-                    responsePacket->type = (PACKET_TYPE) 2;
-                    responsePacket->ack_id = sequence_number;
-                    number_of_nacks = 
-                        transferNacksToPayload(&(responsePacket->nacks[0]), 
+                    ackNackresponsePacket->type = (PACKET_TYPE) 2;
+                    ackNackresponsePacket->ack_id = sequence_number;
+                    number_of_nacks = transferNacksToPayload(
+                                        &(ackNackresponsePacket->nacks[0]),
                                         nack_queue_tail->id + 1, 
                                         sequence_number);
                    /* printf("sending ack %d,nacks packet\n", 
                         responsePacket->ack_id);*/
-                    sendto_dbg(ss, (char *)responsePacket, sizeof(PACKET_TYPE)
-                               + sizeof(PACKET_ID) 
+                    sendto_dbg(ss, (char *)ackNackresponsePacket, 
+                               sizeof(PACKET_TYPE) + sizeof(PACKET_ID) 
                                + number_of_nacks*sizeof(PACKET_ID), 0, 
                                (struct sockaddr*)(&send_addr), 
                                sizeof(send_addr));
@@ -201,7 +195,6 @@ int main(int argc, char **argv)
             fflush(0);
         }
     }
-
     return 0;
 
 }
@@ -216,30 +209,37 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
     int write_size = 0;
     /* If the packet has not been set yet, but it in the window */
     if (packet->id > sequence_number 
-        && window[(packet->id) % WINDOW_SIZE] == NULL) {
-        window[(packet->id) % WINDOW_SIZE] = packet;
+        && window[(packet->id) % WINDOW_SIZE].id == -1) {
+        window[(packet->id) % WINDOW_SIZE].id = packet->id;
+        window[(packet->id) % WINDOW_SIZE].type = packet->type;
+        int payload_size = PAYLOAD_SIZE;
         if (packet->type == (PACKET_TYPE)2) {
-            size_of_last_payload = packet_size - sizeof(PACKET_ID) - sizeof(PACKET_TYPE);
+            size_of_last_payload = 
+                packet_size - sizeof(PACKET_ID) - sizeof(PACKET_TYPE);
+            payload_size = size_of_last_payload;
         }
+        memcpy(window[(packet->id) % WINDOW_SIZE].payload, packet->payload, 
+               payload_size);
+
     }
     /* If the received packet id is the expected id */
-    if (packet->id == (sequence_number + 1)) {
+    if (packet->id == (sequence_number + 1) && fw != NULL) {
         PACKET_ID itr = packet->id;
         /* Write payload to file */
-        while(window[itr % WINDOW_SIZE] != NULL) {
+        while(window[itr % WINDOW_SIZE].id != -1) {
             sequence_number = itr;
             printf("iterating with itr %d\n", itr);
-            printf("the data packet has id %d\n", window[itr%WINDOW_SIZE]->id);
+            printf("the data packet has id %d\n", window[itr%WINDOW_SIZE].id);
             /* TODO: Do we need to check how many bytes fwrite wrote? (it's return val) */
             /* payload size = packet_size - size of ID field - size of type field*/
-            if (window[itr % WINDOW_SIZE]->type == (PACKET_TYPE) 2) {
+            if (window[itr % WINDOW_SIZE].type == (PACKET_TYPE) 2) {
                 /* Write the last payload */ 
                 write_size = size_of_last_payload;
             } else {
                 write_size = PAYLOAD_SIZE;
             }
-            fwrite(window[itr % WINDOW_SIZE]->payload, 1, write_size, fw);
-            if (window[itr % WINDOW_SIZE]->type == (PACKET_TYPE) 2) {
+            fwrite(window[itr % WINDOW_SIZE].payload, 1, write_size, fw);
+            if (window[itr % WINDOW_SIZE].type == (PACKET_TYPE) 2) {
                 if (fw != NULL) {
                     gettimeofday(&end_time_1, 0);
                     printf("done writing to file\n");
@@ -270,8 +270,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                      transfer queue. */
                 }
             }
-            free(window[itr % WINDOW_SIZE]);
-            window[itr % WINDOW_SIZE] = NULL;
+            window[itr % WINDOW_SIZE].id = -1;
             itr++;
         }
         /* Update Nack Queue */
@@ -297,7 +296,7 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
             printf("line 289, tail id: %d\n", nack_queue_tail->id);
             int idx;
             for (idx = nack_queue_tail->id + 1; idx < packet->id; idx++) {
-                if (window[idx % WINDOW_SIZE] == NULL) {   
+                if (window[idx % WINDOW_SIZE].id == -1) {   
                     nack_queue_tail->next = malloc(sizeof(NackNode));
                     if(nack_queue_tail->next == NULL) {                
                         printf("Malloc failed for NackNode.\n");
@@ -365,23 +364,20 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
         }
     }
     /* Send ack-nack packet*/
-    AckNackPacket *responsePacket = malloc(sizeof(AckNackPacket));
-    if (!responsePacket) {
-        printf("Malloc failed for ack-nack Packet.\n");
-        exit(0);
-    }
+    AckNackPacket *ackNackresponsePacket = (AckNackPacket *)(&responsePacket);
+
     /*IP address of host to send to.*/
     send_addr->sin_addr.s_addr = ip; 
      
     /* Ack-nack packet type */
     /* TODO: what should ack be if haven't received a packet yet?*/
-    responsePacket->type = (PACKET_TYPE) 2;
-    responsePacket->ack_id = sequence_number;
+    ackNackresponsePacket->type = (PACKET_TYPE) 2;
+    ackNackresponsePacket->ack_id = sequence_number;
     printf("line 372, packet id: %d\n", packet->id);
-    number_of_nacks = transferNacksToPayload(responsePacket->nacks, 
+    number_of_nacks = transferNacksToPayload(ackNackresponsePacket->nacks, 
                           packet->id, sequence_number);
     /*printf("sending ack %d, nacks packet\n", responsePacket->ack_id);*/
-    sendto_dbg(ss, (char *)responsePacket, sizeof(PACKET_TYPE)
+    sendto_dbg(ss, (char *)ackNackresponsePacket, sizeof(PACKET_TYPE)
                + sizeof(PACKET_ID) + number_of_nacks*sizeof(PACKET_ID), 0,
                (struct sockaddr *)send_addr, sizeof(*send_addr));
 
@@ -421,7 +417,6 @@ void handleTransferPacket(Packet *packet, int ip, int ss,
         initiateTransfer(packet->payload, ip, ss, send_addr);
     } else {
         /* Send not-ready-for-transfer packet */
-        Packet responsePacket;
         /*IP address of host to send to.*/
         send_addr->sin_addr.s_addr = ip; 
         
@@ -481,12 +476,11 @@ void initiateTransfer(char *file_name, int ip, int ss,
 
     if (is_transferring == 0) {
          /* Clear window for new transfer. */
-        int i;
-        for (i = 0; i < WINDOW_SIZE; i++) {
-            if (window[i] != NULL) {
-                free(window[i]);
-                window[i] = NULL;
-            }
+        /* Set up window */
+        int idx;
+        for (idx = 0; idx < WINDOW_SIZE; idx++) {
+            window[idx].id = (PACKET_ID)(-1);
+            window[idx].type = (PACKET_TYPE)(-1);
         }
         /* Clear nack queue for new transfer */
         NackNode *tmp;
