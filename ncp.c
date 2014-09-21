@@ -52,7 +52,7 @@ int main(int argc, char **argv)
     PACKET_ID                    start_of_window;
     char                    at_end_of_window;
     NackNode                nack_list_head;
-    DataPacket              *window[WINDOW_SIZE];
+    DataPacket              window[WINDOW_SIZE];
     int                     size_of_last_packet = 0;
     int                     timeout_counter = 0;
     PACKET_ID               ack_id;
@@ -177,7 +177,7 @@ int main(int argc, char **argv)
     /* Set window DataPacket pointers to NULL*/ 
     int i;
     for (i = 0; i < WINDOW_SIZE; i++) {
-        window[i] = NULL;
+        window[i].id = -1;
     }
     
     nack_list_head.next = NULL;
@@ -246,8 +246,7 @@ int main(int argc, char **argv)
                     if (ack_id >= start_of_window) {
                         /* free packets up to ack_id, move window*/
                         for (;start_of_window < ack_id + 1;start_of_window++) {
-                            free(window[start_of_window % WINDOW_SIZE]);
-                            window[start_of_window % WINDOW_SIZE] = NULL;
+                            window[start_of_window % WINDOW_SIZE].id = -1;
                         }
                         /*start_of_window++;*/
                     }
@@ -268,8 +267,8 @@ int main(int argc, char **argv)
                             ack_nack_packet->nacks[0]);
                         /* send response packet for first nack */
                         response_packet = 
-                            (Packet *)window[(ack_nack_packet->nacks[0]) % 
-                                             WINDOW_SIZE];
+                            (Packet *)(&(window[(ack_nack_packet->nacks[0]) % 
+                                             WINDOW_SIZE]));
                         packet_size = MAX_PACKET_SIZE;
                         if (response_packet->type == (PACKET_TYPE)2) {
                             packet_size = size_of_last_packet;
@@ -333,7 +332,7 @@ int main(int argc, char **argv)
             } else if (nack_list_head.next != NULL) {
                /* printf("first node in nack list: %d\n", 
                     nack_list_head.next->id);*/
-                dPacket = window[nack_list_head.next->id % WINDOW_SIZE];
+                dPacket = &(window[nack_list_head.next->id % WINDOW_SIZE]);
                 
                 packet_size = MAX_PACKET_SIZE;
                 if (dPacket->type == (PACKET_TYPE) 2) {
@@ -354,12 +353,8 @@ int main(int argc, char **argv)
                 /* Read file into char buffer */
                 bytes = fread(input_buf, 1, PAYLOAD_SIZE, fr);
                 
-                /* Form data packet */
-                dPacket = malloc(sizeof(DataPacket));
-                if (!dPacket) {
-                    printf("Malloc failed.\n");
-                    exit(0);
-                }          
+                /* Form data packet within the window */
+                dPacket = &(window[packet_id % WINDOW_SIZE]);
  
                 dPacket->id = packet_id;
                 packet_size = MAX_PACKET_SIZE;
@@ -379,12 +374,9 @@ int main(int argc, char **argv)
                /* printf("sending data packet\n");*/
                 sendto_dbg( ss, (char *)dPacket, packet_size, 0,
                     (struct sockaddr *)&send_addr, sizeof(send_addr) );
-
-                /* Store packet in array for future use */
-                window[packet_id % WINDOW_SIZE] = dPacket;
             } else {
                 /* Resend packet from end of the window/most recently sent */
-                dPacket = window[packet_id % WINDOW_SIZE];
+                dPacket = &(window[packet_id % WINDOW_SIZE]);
                 
                 packet_size = MAX_PACKET_SIZE;
                 if (dPacket->type == (PACKET_TYPE) 2) {
@@ -403,13 +395,6 @@ int main(int argc, char **argv)
             }
         }
     }
-    /* Free memory from window*/ 
-    int itr;
-    for (itr = 0; itr < WINDOW_SIZE; itr++) {
-        if (window[itr] != NULL) {
-            free(window[itr]);
-            window[itr] = NULL;
-        }
-    } 
+    /* TODO: Free nack queue*/ 
     return 0;
 }
