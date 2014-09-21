@@ -259,6 +259,14 @@ int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                     printf("time2-2: %d\n", 
                             (end_time_2.tv_sec-start_time_2.tv_sec)*1000000 + 
                             end_time_2.tv_usec-start_time_2.tv_usec);
+                    /* Clear nack queue */
+                    NackNode *free_node;
+                    while (nack_queue_head != NULL) {
+                        free_node = nack_queue_head;
+                        nack_queue_head = free_node->next;
+                        free(free_node);
+                    }
+                    nack_queue_tail = NULL;
                     /* TODO: set is_transferring to 0, dequeue and free from 
                      transfer queue. */
                 }
