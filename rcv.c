@@ -47,6 +47,7 @@ struct timeval        start_time_1;
 struct timeval        start_time_2;
 struct timeval        end_time_1;
 struct timeval        end_time_2;
+int                   sequential_count = 0;
 
 int main(int argc, char **argv)
 {
@@ -284,8 +285,10 @@ return val) */
             free(nack_free);
         }
         if (nack_queue_head == NULL) {
+            printf("head and tail are now null\n");
             nack_queue_tail = NULL;
-        } 
+        }
+        sequential_count++;
     } else {
         /* This is not the next expected packet. It is already, maybe, added to window above. 
          * Now possibly update nack queue. */

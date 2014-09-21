@@ -230,8 +230,6 @@ another transfer.");
                     /* Transfer has already begun. Received ack/nack packet */
                     ack_nack_packet = (AckNackPacket *)rcvd_packet;
                     ack_id = ack_nack_packet->ack_id;
-                    /* printf("ack_id %d\n",ack_id);*/
-                    /* TODO: We do */
                     if (read_last_packet != 0 && ack_id == packet_id ) {
                         eof = 1;
                     } else {
@@ -251,7 +249,6 @@ another transfer.");
                                 && nack_list_head.next->id <= ack_id) {
                             tmp = nack_list_head.next;
                             nack_list_head.next = tmp->next;
-                            printf("free 254\n");
                             free(tmp);
                         }
 
@@ -260,8 +257,6 @@ another transfer.");
                                 >= sizeof(PACKET_ID))
                                 && ack_id >= start_of_window-1) {
                             /* If there is at least one nack in the packet*/
-                            printf("first nack in from packet: %d\n",
-                                   ack_nack_packet->nacks[0]);
                             /* send response packet for first nack */
                             response_packet =
                                 (Packet *)(&(window[(ack_nack_packet->nacks[0])
@@ -284,7 +279,6 @@ another transfer.");
                                     == ack_nack_packet->nacks[0]) {
                                 tmp = nack_list_itr->next;
                                 nack_list_itr->next = tmp->next;
-                                printf("free 287\n");
                                 free(tmp);
                             }
 
@@ -347,7 +341,6 @@ another transfer.");
                             (struct sockaddr *)&send_addr, sizeof(send_addr));
                 NackNode *tmp_nack_node = nack_list_head.next;
                 nack_list_head.next = nack_list_head.next->next;
-                printf("free 350\n");
                 free(tmp_nack_node);
             } else if (read_last_packet == 0
                        && packet_id + 1 < start_of_window + WINDOW_SIZE) {
