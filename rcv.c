@@ -44,9 +44,13 @@ int                   size_of_last_payload;
 int                   current_ncp_id;
 struct timeval        start_time_1;
 struct timeval        start_time_2;
+struct timeval        middle_time;
 struct timeval        end_time_1;
 struct timeval        end_time_2;
 PACKET_ID             sequence_number = -1;
+long                  bytes_written = 0L;
+long                  threshold = MEG50;  
+int                   total_time;
 
 int main(int argc, char **argv)
 {
@@ -141,14 +145,6 @@ int main(int argc, char **argv)
                                         (DataPacket *) (&rcvd_packet), bytes,
                                         from_ip, ss, &send_addr); 
                 }
-
-               /* printf( "Received from (%d.%d.%d.%d)\n", 
-						(htonl(from_ip) & 0xff000000)>>24,
-						(htonl(from_ip) & 0x00ff0000)>>16,
-						(htonl(from_ip) & 0x0000ff00)>>8,
-						(htonl(from_ip) & 0x000000ff)); 
-                */
-
             }
 	} else {
             timeout_counter++;
@@ -175,8 +171,6 @@ int main(int argc, char **argv)
                                         sequence_number);
                     }
                     
-                   /* printf("sending ack %d,nacks packet\n", 
-                        responsePacket->ack_id);*/
                     sendto_dbg(ss, (char *)ackNackresponsePacket, 
                                sizeof(PACKET_TYPE) + sizeof(PACKET_ID) 
                                + number_of_nacks*sizeof(PACKET_ID), 0, 
@@ -191,18 +185,22 @@ int main(int argc, char **argv)
                 }
                                 
                 Node *free_node = transfer_queue_head;
-                printf("free ip %d\n", transfer_queue_head->sender_ip);
                 transfer_queue_head = transfer_queue_head->next;
                 free(free_node);
                 is_transferring = 0;
-                if (transfer_queue_head == NULL) {
-                    printf("transfer queue null\n");
-                }
             }
             fflush(0);
         }
     }
-    
+  
+    total_time = (end_time_1.tv_sec*1e6 + end_time_1.tv_usec) - 
+                    (start_time_2.tv_sec*1e6 + start_time_2.tv_usec);
+    printf("Total size: %lu bytes\n", bytes_written);
+    printf("Total time: %d usec\n", total_time);
+    printf("Total rate: %f megabits/sec\n", 8.0*bytes_written/total_time);
+
+ 
+ 
     Node *free_node;
     while(transfer_queue_head != NULL) {
         free_node = transfer_queue_head;
@@ -216,7 +214,6 @@ int main(int argc, char **argv)
 /* Returns possibly updated sequence number  */
 int handleDataPacket(DataPacket *packet, int packet_size, int ip,
                       int ss, struct sockaddr_in *send_addr) { 
-    printf("Handling data packet with id: %d\n", packet->id);
     int number_of_nacks = 0;
     int write_size = 0;
     int burst_count = 0;
@@ -251,6 +248,18 @@ return val) */
                 write_size = PAYLOAD_SIZE;
             }
             fwrite(window[itr % WINDOW_SIZE].payload, 1, write_size, fw);
+            bytes_written += write_size;
+            if (bytes_written >= threshold) {
+                threshold += MEG50;
+                printf("Amount transferred: %f Megabytes\n",                                    (double) bytes_written / MEG);
+                
+                total_time = (end_time_1.tv_sec*1e6 + end_time_1.tv_usec) - 
+                                (middle_time.tv_sec*1e6 + middle_time.tv_usec);
+                printf("Rate of last 50M: %f megabits/sec\n", 
+                    8.0 * MEG50 / (double) total_time);
+                middle_time.tv_sec = end_time_1.tv_sec;
+                middle_time.tv_sec = end_time_1.tv_usec;
+            }
             if (window[itr % WINDOW_SIZE].type == (PACKET_TYPE) 2) {
                 if (fw != NULL) {
                     gettimeofday(&end_time_1, 0);
@@ -272,7 +281,6 @@ return val) */
                     gettimeofday(&end_time_2, 0);
                     fw  = NULL;
                     Node *free_t_node = transfer_queue_head;
-                    printf("free ip %d\n", transfer_queue_head->sender_ip);
                     transfer_queue_head = transfer_queue_head->next;
                     free(free_t_node);
 
@@ -307,7 +315,6 @@ return val) */
         NackNode *nack_free;
         while (nack_queue_head != NULL 
                && nack_queue_head->id <= sequence_number) {
-           /* printf("removing from nack queue id: %d\n",nack_queue_head->id);*/
             nack_free = nack_queue_head;
             nack_queue_head = nack_queue_head->next;
             free(nack_free);
@@ -401,7 +408,6 @@ return val) */
     ackNackresponsePacket->ack_id = sequence_number;
     number_of_nacks = transferNacksToPayload(ackNackresponsePacket->nacks, 
                           packet->id, sequence_number);
-    /*printf("sending ack %d, nacks packet\n", responsePacket->ack_id);*/
     sendto_dbg(ss, (char *)ackNackresponsePacket, sizeof(PACKET_TYPE)
                + sizeof(PACKET_ID) + number_of_nacks*sizeof(PACKET_ID), 0,
                (struct sockaddr *)send_addr, sizeof(*send_addr));
@@ -416,7 +422,6 @@ int transferNacksToPayload(PACKET_ID *nack_payload_ptr, PACKET_ID rcvd_id,
     NackNode *itr = nack_queue_head;
     while (itr != NULL && itr->id < rcvd_id) {
         if (itr->count % NACK_WAIT_COUNT == 0) {
-/*             printf("adding %u to nack payload\n", itr->id);*/
             memcpy(nack_payload_ptr, &itr->id, sizeof(PACKET_ID)); 
             nack_payload_ptr++;
             number_of_nacks_added++;
@@ -429,13 +434,10 @@ int transferNacksToPayload(PACKET_ID *nack_payload_ptr, PACKET_ID rcvd_id,
 
 void handleTransferPacket(Packet *packet, int ip, int ss, 
                           struct sockaddr_in *send_addr) {
-    printf("file name: %s\n", packet->payload);
     /* If the ip is not in the queue, we want to add it to the tranfer queue */
     if (isInQueue(ip) == 0) {
-        printf("ip is not in queue\n");
         addToQueue(packet, ip);
     }
-    if (transfer_queue_head == NULL) printf("queue head is null\n");
     /* If the current sender is first in the queue, want to initiate tranfer. */
     if (transfer_queue_head != NULL && transfer_queue_head->sender_ip == ip) {
         gettimeofday(&start_time_1, 0);
@@ -490,6 +492,8 @@ void initiateTransfer(char *file_name, int ip, int ss,
     printf("intitiate transfer with ip %d\n", ip);
 
     gettimeofday(&start_time_2, 0);
+    middle_time.tv_sec = start_time_2.tv_sec;
+    middle_time.tv_usec = start_time_2.tv_usec;
     /* Create ready for transfer response packet */
     Packet responsePacket;
     /*IP address of host to send to.*/

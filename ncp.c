@@ -58,6 +58,13 @@ int main(int argc, char **argv)
     PACKET_ID               ack_id;
     char                    read_last_packet = 0;
     int                     burst_count = 0;
+    struct timeval          start_time;
+    struct timeval          prev_time;
+    struct timeval          end_time;
+    long                    sent_bytes = 0;
+    long                    threshold = MEG50;
+    int                     total_time;
+    int                     tmp_packet_size = 0;
 
     /* Need three arguements: loss_rate_percent, source_file_name, and
        dest_file_name@comp_name */
@@ -202,9 +209,7 @@ source_file_name,
             /* Select has been triggered */
             if ( FD_ISSET( sr, &temp_mask) ) /* Receiving socket has packet */
             {
-                printf("received packet\n");
                 timeout_counter = 0;
-                /* printf("RECEIVED A PACKET\n");*/
                 /* Get data from ethernet interface */
                 from_len = sizeof(from_addr);
                 bytes = recvfrom( sr, mess_buf, sizeof(mess_buf), 0,
@@ -216,6 +221,9 @@ source_file_name,
                 {
                     if (rcvd_packet->type == (PACKET_TYPE)0)
                     {   /* Receiver is ready */
+                        gettimeofday(&start_time, 0);
+                        prev_time.tv_sec = start_time.tv_sec;
+                        prev_time.tv_usec = start_time.tv_usec;
                         begun = 1;
                         start_of_window = 0;
                         at_end_of_window = 0;
@@ -231,19 +239,38 @@ another transfer.");
                     /* Transfer has already begun. Received ack/nack packet */
                     ack_nack_packet = (AckNackPacket *)rcvd_packet;
                     ack_id = ack_nack_packet->ack_id;
+                    /* If the cummuluative ack is in the window. we remove
+                     * packets from the sender's window and shift the
+                     * window*/
+                    if (ack_id >= start_of_window) {
+                        /* free packets up to ack_id, move window*/
+                         while(start_of_window < ack_id+1) {
+                            tmp_packet_size = PAYLOAD_SIZE;
+                            if (window[start_of_window % WINDOW_SIZE].type
+                                    == (PACKET_TYPE)2) {
+                                tmp_packet_size = size_of_last_packet;
+                            }
+                            sent_bytes += tmp_packet_size;
+                            if(sent_bytes >= threshold){
+                                threshold += MEG50;
+                                gettimeofday(&end_time, 0);
+                                total_time = (end_time.tv_sec*1e6 + end_time.tv_usec) - 
+                                        (prev_time.tv_sec*1e6 + prev_time.tv_usec);
+                                printf("Amount transferred: %f Megabytes\n",
+                                        (double) sent_bytes / MEG);
+                                printf("Rate of last 50M: %f megabits/sec\n", 
+                                        8.0 * MEG50 / (double) total_time);
+                                prev_time.tv_sec = end_time.tv_sec;
+                                prev_time.tv_usec = end_time.tv_usec;
+                            }                           
+                            window[start_of_window % WINDOW_SIZE].id = -1;
+                            start_of_window++;
+                        }
+                    }
                     if (read_last_packet != 0 && ack_id == packet_id ) {
+                        gettimeofday(&end_time, 0);
                         eof = 1;
                     } else {
-                        /* If the cummuluative ack is in the window. we remove
-                         * packets from the sender's window and shift the
-                         * window*/
-                        if (ack_id >= start_of_window) {
-                            /* free packets up to ack_id, move window*/
-                            while(start_of_window < ack_id+1) {
-                                window[start_of_window % WINDOW_SIZE].id = -1;
-                                start_of_window++;
-                            }
-                        }
                         NackNode *tmp;
                         /* Remove stale nacks from nack list*/
                         while (nack_list_head.next != NULL
@@ -327,10 +354,7 @@ another transfer.");
             {
                 sendto_dbg(ss, (char *)(&transfer_packet), packet_size, 0,
                            (struct sockaddr *)&send_addr, sizeof(send_addr));
-                /*  printf("Attempting to initiate transfer\n");*/
             } else if (nack_list_head.next != NULL) {
-                /* printf("first node in nack list: %d\n",
-                     nack_list_head.next->id);*/
                 dPacket = &(window[nack_list_head.next->id % WINDOW_SIZE]);
 
                 packet_size = MAX_PACKET_SIZE;
@@ -351,8 +375,6 @@ another transfer.");
                         && fr != NULL) {
                     /* Increment to get the next id of the packet to be sent. */
                     packet_id++;
-                    printf("start of window: %d\n", start_of_window);
-                    printf("create packet for id %d\n", packet_id);
 
                     /* Read file into char buffer */
                     bytes = fread(input_buf, 1, PAYLOAD_SIZE, fr);
@@ -363,7 +385,6 @@ another transfer.");
                     dPacket->id = packet_id;
                     packet_size = MAX_PACKET_SIZE;
                     if(feof(fr)) { /* If we've reached the EOF, set type = 2 */
-                        printf("read last bytes, creating last packet\n");
                         fclose(fr);
                         fr = NULL;
                         read_last_packet = 1;
@@ -377,7 +398,6 @@ another transfer.");
                     }
 
                     memcpy(dPacket->payload, input_buf, bytes);
-                    /* printf("sending data packet\n");*/
                     sendto_dbg( ss, (char *)dPacket, packet_size, 0,
                                 (struct sockaddr *)&send_addr, 
                                 sizeof(send_addr));
@@ -410,6 +430,12 @@ another transfer.");
     if (fr != NULL) {
         fclose(fr);
     }
+    total_time = (end_time.tv_sec*1e6 + end_time.tv_usec) - 
+                    (start_time.tv_sec*1e6 + start_time.tv_usec);
+    printf("Total size: %lu bytes\n", sent_bytes);
+    printf("Total time: %d usec\n", total_time);
+    printf("Total rate: %f megabits/sec\n", 8.0*sent_bytes/total_time);
+
     return 0;
 }
  

@@ -18,6 +18,9 @@
 #define PAYLOAD_SIZE    MAX_PACKET_SIZE-sizeof(PACKET_TYPE)-sizeof(PACKET_ID)
 #define NACK_WAIT_COUNT 20
 #define BURST_MAX       20
+#define MEG             1048576
+#define MEG50           50*MEG
+
 
 /* Packet: Struct for generic packet */
 typedef struct {
