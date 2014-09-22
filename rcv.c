@@ -46,11 +46,10 @@ struct timeval        start_time_1;
 struct timeval        start_time_2;
 struct timeval        middle_time;
 struct timeval        end_time_1;
-struct timeval        end_time_2;
 PACKET_ID             sequence_number = -1;
 long                  bytes_written = 0L;
 long                  threshold = MEG50;  
-int                   total_time;
+long                  total_time;
 
 int main(int argc, char **argv)
 {
@@ -113,7 +112,7 @@ int main(int argc, char **argv)
     FD_ZERO( &mask );
     FD_ZERO( &dummy_mask );
     FD_SET( sr, &mask );
-    while (timeout_counter < 5000) {
+    for(;;) {
         temp_mask = mask;
         if (is_transferring == 0) {
             timeout.tv_sec = 0;
@@ -155,7 +154,8 @@ int main(int argc, char **argv)
                 if (nack_queue_tail != NULL) {
                     int number_of_nacks = 0;
                     /* Send ack-nack packet*/
-                    AckNackPacket *ackNackresponsePacket = &responsePacket;
+                    AckNackPacket *ackNackresponsePacket = 
+                        (AckNackPacket *)&responsePacket;
                     
                     /*IP address of host to send to.*/
                     send_addr.sin_addr.s_addr = current_ncp_id; 
@@ -193,11 +193,7 @@ int main(int argc, char **argv)
         }
     }
   
-    total_time = (end_time_1.tv_sec*1e6 + end_time_1.tv_usec) - 
-                    (start_time_2.tv_sec*1e6 + start_time_2.tv_usec);
-    printf("Total size: %lu bytes\n", bytes_written);
-    printf("Total time: %d usec\n", total_time);
-    printf("Total rate: %f megabits/sec\n", 8.0*bytes_written/total_time);
+
 
  
  
@@ -252,20 +248,27 @@ return val) */
             if (bytes_written >= threshold) {
                 threshold += MEG50;
                 printf("Amount transferred: %f Megabytes\n",                                    (double) bytes_written / MEG);
-                
+                gettimeofday(&end_time_1, 0);
                 total_time = (end_time_1.tv_sec*1e6 + end_time_1.tv_usec) - 
                                 (middle_time.tv_sec*1e6 + middle_time.tv_usec);
-                printf("Rate of last 50M: %f megabits/sec\n", 
+                printf("Rate of last 50M: %lf megabits/sec\n", 
                     8.0 * MEG50 / (double) total_time);
                 middle_time.tv_sec = end_time_1.tv_sec;
-                middle_time.tv_sec = end_time_1.tv_usec;
+                middle_time.tv_usec = end_time_1.tv_usec;
             }
             if (window[itr % WINDOW_SIZE].type == (PACKET_TYPE) 2) {
                 if (fw != NULL) {
                     gettimeofday(&end_time_1, 0);
                     printf("done writing to file\n");
 
-                    AckNackPacket *ackNackResponsePacket = &responsePacket;
+                    total_time = (end_time_1.tv_sec*1e6 + end_time_1.tv_usec) - 
+                                    (start_time_2.tv_sec*1e6 + start_time_2.tv_usec);
+                    printf("Total size: %lu bytes\n", bytes_written);
+                    printf("Total time: %lu usec\n", total_time);
+                    printf("Total rate: %f megabits/sec\n", 8.0*bytes_written/total_time);
+                    
+                    AckNackPacket *ackNackResponsePacket = 
+                        (AckNackPacket *) &responsePacket;
                     ackNackResponsePacket->type = (PACKET_TYPE)2;
                     ackNackResponsePacket->ack_id = sequence_number;
                     burst_count = 0;
@@ -278,24 +281,11 @@ return val) */
                     }
                     is_transferring = 0; 
                     fclose(fw); 
-                    gettimeofday(&end_time_2, 0);
                     fw  = NULL;
                     Node *free_t_node = transfer_queue_head;
                     transfer_queue_head = transfer_queue_head->next;
                     free(free_t_node);
 
-                    printf("time1-1: %d\n", 
-                            (end_time_1.tv_sec-start_time_1.tv_sec)*1000000 + 
-                            end_time_1.tv_usec-start_time_1.tv_usec);
-                    printf("time1-2: %d\n", 
-                            (end_time_2.tv_sec-start_time_1.tv_sec)*1000000 + 
-                            end_time_2.tv_usec-start_time_1.tv_usec);
-                    printf("time2-1: %d\n", 
-                            (end_time_1.tv_sec-start_time_2.tv_sec)*1000000 + 
-                            end_time_1.tv_usec-start_time_2.tv_usec);
-                    printf("time2-2: %d\n", 
-                            (end_time_2.tv_sec-start_time_2.tv_sec)*1000000 + 
-                            end_time_2.tv_usec-start_time_2.tv_usec);
                     /* Clear nack queue */
                     NackNode *free_node;
                     while (nack_queue_head != NULL) {
@@ -490,6 +480,8 @@ void addToQueue(Packet *packet, int ip) {
 void initiateTransfer(char *file_name, int ip, int ss, 
                       struct sockaddr_in *send_addr) {
     printf("intitiate transfer with ip %d\n", ip);
+    threshold = MEG50;    
+    bytes_written = 0L;
 
     gettimeofday(&start_time_2, 0);
     middle_time.tv_sec = start_time_2.tv_sec;

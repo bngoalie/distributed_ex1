@@ -48,9 +48,7 @@ int main(int argc, char **argv)
     Packet                  *response_packet;
     AckNackPacket           *ack_nack_packet;
     int                     packet_size;
-    char                    end_of_window;
     PACKET_ID                    start_of_window;
-    char                    at_end_of_window;
     NackNode                nack_list_head;
     DataPacket              window[WINDOW_SIZE];
     int                     size_of_last_packet = 0;
@@ -226,7 +224,6 @@ source_file_name,
                         prev_time.tv_usec = start_time.tv_usec;
                         begun = 1;
                         start_of_window = 0;
-                        at_end_of_window = 0;
                         printf("Transfer has begun...\n");
                     }
                     else if (rcvd_packet->type == (PACKET_TYPE)1) {
