@@ -221,7 +221,7 @@ source_file_name,
                         at_end_of_window = 0;
                         printf("Transfer has begun...\n");
                     }
-                    else {
+                    else if (rcvd_packet->type == (PACKET_TYPE)1) {
                         /* Receiver is NOT ready */ 
                         printf("Receiver currently busy handling \
 another transfer.");
@@ -397,7 +397,7 @@ another transfer.");
             
 
 
-if (++timeout_counter >= 10000) {
+                if (++timeout_counter >= 50000) {
                     eof = 1;
                     if (read_last_packet == 0) {
                         fclose(fr);

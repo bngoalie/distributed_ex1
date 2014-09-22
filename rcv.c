@@ -14,8 +14,7 @@ void initiateTransfer(char *file_name, int ip, int ss, struct sockaddr_in *send_
 int transferNacksToPayload(PACKET_ID *nack_payload_ptr, PACKET_ID rcvd_id, 
                            PACKET_ID sequence_id);
 int handleDataPacket(DataPacket *packet, int packet_size, int ip,
-                      int ss, struct sockaddr_in *send_addr, 
-                      int sequence_number);
+                      int ss, struct sockaddr_in *send_addr);
     
 /* Structs */
 typedef struct dummy_node 
@@ -47,7 +46,7 @@ struct timeval        start_time_1;
 struct timeval        start_time_2;
 struct timeval        end_time_1;
 struct timeval        end_time_2;
-int                   sequential_count = 0;
+PACKET_ID             sequence_number = -1;
 
 int main(int argc, char **argv)
 {
@@ -64,10 +63,9 @@ int main(int argc, char **argv)
     char                  mess_buf[MAX_PACKET_SIZE];
     struct timeval        timeout;
     Packet                rcvd_packet;
-    PACKET_ID             sequence_number = -1;
+
     int                   loss_rate;
     int                   timeout_counter = 0;
-
 
     /* Need one arguements: loss_rate_percent */
     if(argc != 2) {
@@ -111,7 +109,7 @@ int main(int argc, char **argv)
     FD_ZERO( &mask );
     FD_ZERO( &dummy_mask );
     FD_SET( sr, &mask );
-    while (timeout_counter < 1000000) {
+    while (timeout_counter < 5000) {
         temp_mask = mask;
         if (is_transferring == 0) {
             timeout.tv_sec = 0;
@@ -141,8 +139,7 @@ int main(int argc, char **argv)
                     /* handling data packet. */
                     sequence_number = handleDataPacket(
                                         (DataPacket *) (&rcvd_packet), bytes,
-                                        from_ip, ss, &send_addr, 
-                                        sequence_number);
+                                        from_ip, ss, &send_addr); 
                 }
 
                /* printf( "Received from (%d.%d.%d.%d)\n", 
@@ -157,8 +154,7 @@ int main(int argc, char **argv)
             timeout_counter++;
             if (is_transferring == 0 && transfer_queue_head != NULL) {
                 initiateTransfer(transfer_queue_head->name, transfer_queue_head->sender_ip, ss, &send_addr);
-                timeout_counter = 0;
-            } else if (is_transferring && timeout_counter <= 100) {
+            } else if (is_transferring && timeout_counter <= 5000) {
                 /* TODO: Make macro for timeout_counter limit.*/
                 if (nack_queue_tail != NULL) {
                     int number_of_nacks = 0;
@@ -192,7 +188,8 @@ int main(int argc, char **argv)
                 if (fw != NULL) {
                   fclose(fw); 
                   fw  = NULL;
-                }                
+                }
+                                
                 Node *free_node = transfer_queue_head;
                 printf("free ip %d\n", transfer_queue_head->sender_ip);
                 transfer_queue_head = transfer_queue_head->next;
@@ -218,11 +215,11 @@ int main(int argc, char **argv)
 
 /* Returns possibly updated sequence number  */
 int handleDataPacket(DataPacket *packet, int packet_size, int ip,
-                      int ss, struct sockaddr_in *send_addr, 
-                      PACKET_ID sequence_number) {
+                      int ss, struct sockaddr_in *send_addr) { 
     printf("Handling data packet with id: %d\n", packet->id);
     int number_of_nacks = 0;
     int write_size = 0;
+    int burst_count = 0;
     /* If the packet has not been set yet, but it in the window */
     if (packet->id > sequence_number 
         && window[(packet->id) % WINDOW_SIZE].id == -1) {
@@ -258,9 +255,27 @@ return val) */
                 if (fw != NULL) {
                     gettimeofday(&end_time_1, 0);
                     printf("done writing to file\n");
+
+                    AckNackPacket *ackNackResponsePacket = &responsePacket;
+                    ackNackResponsePacket->type = (PACKET_TYPE)2;
+                    ackNackResponsePacket->ack_id = sequence_number;
+                    burst_count = 0;
+                    while (burst_count < BURST_MAX) {
+                        sendto_dbg(ss, (char *)ackNackResponsePacket, 
+                                   sizeof(PACKET_TYPE) + sizeof(PACKET_ID), 0, 
+                                   (struct sockaddr*)(&send_addr), 
+                                   sizeof(send_addr));
+                        burst_count++;
+                    }
+                    is_transferring = 0; 
                     fclose(fw); 
                     gettimeofday(&end_time_2, 0);
                     fw  = NULL;
+                    Node *free_t_node = transfer_queue_head;
+                    printf("free ip %d\n", transfer_queue_head->sender_ip);
+                    transfer_queue_head = transfer_queue_head->next;
+                    free(free_t_node);
+
                     printf("time1-1: %d\n", 
                             (end_time_1.tv_sec-start_time_1.tv_sec)*1000000 + 
                             end_time_1.tv_usec-start_time_1.tv_usec);
@@ -420,6 +435,7 @@ void handleTransferPacket(Packet *packet, int ip, int ss,
         printf("ip is not in queue\n");
         addToQueue(packet, ip);
     }
+    if (transfer_queue_head == NULL) printf("queue head is null\n");
     /* If the current sender is first in the queue, want to initiate tranfer. */
     if (transfer_queue_head != NULL && transfer_queue_head->sender_ip == ip) {
         gettimeofday(&start_time_1, 0);
@@ -471,6 +487,8 @@ void addToQueue(Packet *packet, int ip) {
 */
 void initiateTransfer(char *file_name, int ip, int ss, 
                       struct sockaddr_in *send_addr) {
+    printf("intitiate transfer with ip %d\n", ip);
+
     gettimeofday(&start_time_2, 0);
     /* Create ready for transfer response packet */
     Packet responsePacket;
@@ -483,6 +501,7 @@ void initiateTransfer(char *file_name, int ip, int ss,
     /* Send ready-for-transfer packet */
     sendto_dbg(ss, (char *)(&responsePacket), sizeof(PACKET_TYPE), 0,
                (struct sockaddr *)send_addr, sizeof(*send_addr));
+    sequence_number = -1;
 
     if (is_transferring == 0) {
          /* Clear window for new transfer. */
